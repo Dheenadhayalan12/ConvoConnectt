@@ -114,9 +114,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
   },
   title: {
-    fontSize: 24,
+    fontSize: 28,
     fontWeight: 'bold',
     marginBottom: 20,
+    marginTop:25,
+    color:'#007bff'
   },
   chatItem: {
     flexDirection: 'row',
@@ -132,6 +134,7 @@ const styles = StyleSheet.create({
   chatName: {
     fontSize: 18,
     fontWeight: 'bold',
+    color:'#72bcd4'
   },
   lastMessage: {
     fontSize: 14,

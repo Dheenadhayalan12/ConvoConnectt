@@ -1,4 +1,4 @@
-// navigation/MainTabNavigator.tsx
+// navigation/MainNavigator.tsx
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { RouteProp } from '@react-navigation/native';

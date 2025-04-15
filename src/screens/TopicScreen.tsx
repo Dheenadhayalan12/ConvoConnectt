@@ -1,12 +1,13 @@
+// screens/TopicScreen.tsx
 import React, { useState, useEffect } from "react";
 import {
-  View,
-  Text,
-  FlatList,
-  TouchableOpacity,
-  StyleSheet,
-  ActivityIndicator,
-  Alert,
+  View,
+  Text,
+  FlatList,
+  TouchableOpacity,
+  StyleSheet,
+  ActivityIndicator,
+  Alert,
 } from "react-native";
 import { useRoute, useNavigation } from "@react-navigation/native";
 import type { RouteProp } from "@react-navigation/native";
@@ -14,18 +15,17 @@ import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { MainStackParamList } from "../config/navigationTypes";
 import { auth, db } from "../config/firebaseConfig";
 import {
-  doc,
-  getDoc,
-  setDoc,
-  deleteDoc,
-  collection,
-  onSnapshot,
-  query,
-  where,
-  Timestamp,
-  serverTimestamp,
+  doc,
+  getDoc,
+  setDoc,
+  deleteDoc,
+  collection,
+  onSnapshot,
+  query,
+  where,
+  Timestamp,
+  serverTimestamp,
 } from "firebase/firestore";
-
 
 interface OnlineUser {
   id: string;
@@ -36,10 +36,21 @@ interface OnlineUser {
 type TopicScreenRouteProp = RouteProp<MainStackParamList, "TopicScreen">;
 type NavigationProp = NativeStackNavigationProp<MainStackParamList, "TopicScreen">;
 
+// Improved sanitize function that handles more edge cases
+const sanitizeTopicName = (topic: string): string => {
+  // First trim whitespace, then replace special chars with underscore
+  // and ensure we don't end up with multiple underscores
+  return topic.trim()
+    .replace(/[^a-zA-Z0-9]/g, '_')
+    .replace(/_+/g, '_')
+    .toLowerCase();
+};
+
 export default function TopicScreen() {
   const route = useRoute<TopicScreenRouteProp>();
   const navigation = useNavigation<NavigationProp>();
   const { topic } = route.params;
+  const sanitizedTopic = sanitizeTopicName(topic);
 
   const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
   const [loading, setLoading] = useState(true);
@@ -48,8 +59,14 @@ export default function TopicScreen() {
   useEffect(() => {
     if (!userId) return;
 
-    const userRef = doc(db, "topics", topic, "onlineUsers", userId);
-    const userTopicRef = doc(db, "userTopics", userId, topic);
+    // Validate the sanitized topic name
+    if (!sanitizedTopic || sanitizedTopic.length === 0) {
+      console.error("Invalid topic name after sanitization");
+      return;
+    }
+
+    const userRef = doc(db, "topics", sanitizedTopic, "onlineUsers", userId);
+    const userTopicRef = doc(db, "userTopics", userId, sanitizedTopic);
 
     const setupPresence = async () => {
       try {
@@ -68,10 +85,12 @@ export default function TopicScreen() {
 
         await setDoc(userTopicRef, {
           joinedAt: serverTimestamp(),
+          originalTopicName: topic,
         });
 
         const interval = setInterval(() => {
-          setDoc(userRef, { lastSeen: serverTimestamp() }, { merge: true });
+          setDoc(userRef, { lastSeen: serverTimestamp() }, { merge: true })
+            .catch(e => console.error("Error updating lastSeen:", e));
         }, 30000);
 
         return () => {
@@ -81,6 +100,7 @@ export default function TopicScreen() {
         };
       } catch (error) {
         console.error("Error in setupPresence:", error);
+        Alert.alert("Error", "Could not establish presence in topic");
       }
     };
 
@@ -89,33 +109,42 @@ export default function TopicScreen() {
     return () => {
       cleanup?.then((fn) => fn?.()).catch((e) => console.error("Cleanup error:", e));
     };
-  }, [topic, userId]);
+  }, [topic, userId, sanitizedTopic]);
 
   useEffect(() => {
-    if (!userId) return;
+    if (!userId || !sanitizedTopic) return;
 
-    const usersRef = collection(db, "topics", topic, "onlineUsers");
+    const usersRef = collection(db, "topics", sanitizedTopic, "onlineUsers");
     const q = query(usersRef, where("lastSeen", ">", Timestamp.fromDate(new Date(Date.now() - 60000))));
 
     const unsubscribe = onSnapshot(q, async (snapshot) => {
-      const users = await Promise.all(
-        snapshot.docs
-          .filter((doc) => doc.id !== userId)
-          .map(async (doc) => {
-            const data = doc.data();
-            return {
-              id: doc.id,
-              name: data?.name || "Anonymous",
-              isFriend: false,
-            };
-          })
-      );
-      setOnlineUsers(users);
+      try {
+        const users = await Promise.all(
+          snapshot.docs
+            .filter((doc) => doc.id !== userId)
+            .map(async (doc) => {
+              const data = doc.data();
+              return {
+                id: doc.id,
+                name: data?.name || "Anonymous",
+                isFriend: false,
+              };
+            })
+        );
+        setOnlineUsers(users);
+        setLoading(false);
+      } catch (error) {
+        console.error("Error fetching online users:", error);
+        setLoading(false);
+      }
+    }, (error) => {
+      console.error("Error in online users snapshot:", error);
       setLoading(false);
     });
 
     return () => unsubscribe();
-  }, [topic, userId]);
+  }, [topic, userId, sanitizedTopic]);
+
 
   const handleChatRequest = async (targetUser: OnlineUser) => {
     try {
@@ -133,7 +162,7 @@ export default function TopicScreen() {
         to: targetUser.id,
         status: "pending",
         createdAt: serverTimestamp(),
-        topic: topic,
+        topic: topic, // Using original topic name here
       });
 
       Alert.alert(
@@ -147,67 +176,7 @@ export default function TopicScreen() {
     }
   };
 
-  useEffect(() => {
-    if (!userId) return;
-
-    const q = query(
-      collection(db, "chatRequests"),
-      where("to", "==", userId),
-      where("status", "==", "pending")
-    );
-
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      snapshot.forEach(async (docSnap) => {
-        const request = docSnap.data();
-        const fromUserDoc = await getDoc(doc(db, "users", request.from));
-        const fromUserName = fromUserDoc.exists() ? fromUserDoc.data().name : "Unknown";
-
-        Alert.alert(
-          "Chat Request",
-          `You have a chat request from ${fromUserName}`,
-          [
-            {
-              text: "Decline",
-              onPress: async () => {
-                await setDoc(doc(db, "chatRequests", docSnap.id), { status: "declined" }, { merge: true });
-              },
-              style: "cancel",
-            },
-            {
-              text: "Accept",
-              onPress: async () => {
-                await setDoc(doc(db, "chatRequests", docSnap.id), { status: "accepted" }, { merge: true });
-                const chatId = [request.from, request.to].sort().join("_");
-                navigation.navigate("ChatScreen", { chatId, userName: fromUserName });
-              },
-            },
-          ]
-        );
-      });
-    });
-
-    return () => unsubscribe();
-  }, [userId]);
-
-  useEffect(() => {
-    if (!userId) return;
-
-    const q = query(
-      collection(db, "chatRequests"),
-      where("from", "==", userId),
-      where("status", "==", "accepted")
-    );
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      snapshot.forEach((docSnap) => {
-        const request = docSnap.data();
-        const chatId = [request.from, request.to].sort().join("_");
-        navigation.navigate("ChatScreen", { chatId, userName: "Friend" });
-      });
-    });
-
-    return () => unsubscribe();
-  }, [userId]);
+  // ... (keep the existing useEffect hooks for chat requests)
 
   const renderUserItem = ({ item }: { item: OnlineUser }) => (
     <View style={styles.userItem}>
@@ -226,7 +195,7 @@ export default function TopicScreen() {
     );
   }
 
-  return (
+ return (
     <View style={styles.container}>
       <Text style={styles.topicTitle}>{topic}</Text>
       <Text style={styles.onlineTitle}>Online Users ({onlineUsers.length})</Text>
@@ -235,7 +204,11 @@ export default function TopicScreen() {
         data={onlineUsers}
         keyExtractor={(item) => item.id}
         renderItem={renderUserItem}
-        ListEmptyComponent={<Text style={styles.emptyText}>No other users online</Text>}
+        ListEmptyComponent={
+          <Text style={styles.emptyText}>
+            {loading ? "Loading..." : "No other users online"}
+          </Text>
+        }
         contentContainerStyle={onlineUsers.length === 0 ? styles.emptyList : undefined}
       />
     </View>

@@ -11,7 +11,10 @@ import { RootStackParamList } from "./src/config/navigationTypes";
 import SplashScreen from "./src/screens/SplashScreen";
 import MainNavigator from "./src/navigation/MainNavigator";
 import AuthNavigator from "./src/navigation/AuthNavigator";
-import ChatScreen from "./src/screens/ChatScreen"; // Ensure this is imported
+import ChatScreen from "./src/screens/ChatScreen";
+import TopicScreen from "./src/screens/TopicScreen"; // Add this import
+import LoginScreen from "./src/screens/LoginScreen";
+import SignupScreen from "./src/screens/SignupScreen";
 
 const RootStack = createStackNavigator<RootStackParamList>();
 
@@ -26,8 +29,8 @@ export default function App() {
         await Font.loadAsync({ ...Ionicons.font });
         setFontsLoaded(true);
 
-        // Listen to auth changes
         const unsubscribe = onAuthStateChanged(auth, (firebaseUser) => {
+          console.log("Auth state changed:", firebaseUser?.email); // Debug log
           setUser(firebaseUser);
           setLoading(false);
         });
@@ -50,17 +53,33 @@ export default function App() {
     );
   }
 
+// App.tsx
+const AuthStack = createStackNavigator();
+const AuthNavigator = () => (
+  <AuthStack.Navigator screenOptions={{ headerShown: false }} >
+    <AuthStack.Screen name="Login" component={LoginScreen} />
+    <AuthStack.Screen name="Signup" component={SignupScreen} />
+  </AuthStack.Navigator>
+);
+
+// Then in your main navigator
+<RootStack.Screen name="AuthStack" component={AuthNavigator} />
+
   return (
     <NavigationContainer>
       <RootStack.Navigator screenOptions={{ headerShown: false }}>
         {user ? (
+          // Authenticated screens
           <>
             <RootStack.Screen name="Main" component={MainNavigator} />
+            <RootStack.Screen name="TopicScreen" component={TopicScreen} />
             <RootStack.Screen name="ChatScreen" component={ChatScreen} />
           </>
         ) : (
+          // Unauthenticated screens
           <>
             <RootStack.Screen name="Splash" component={SplashScreen} />
+            <RootStack.Screen name="Login" component={LoginScreen} />
             <RootStack.Screen name="Auth" component={AuthNavigator} />
           </>
         )}

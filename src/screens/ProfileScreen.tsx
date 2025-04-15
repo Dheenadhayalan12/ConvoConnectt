@@ -1,14 +1,15 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import { View, Text, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Alert, ScrollView } from "react-native";
 import { auth, db } from "../config/firebaseConfig";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, updateDoc } from "firebase/firestore";
 import { Ionicons } from "@expo/vector-icons";
-import { useNavigation } from "@react-navigation/native";
+import { CommonActions, useNavigation } from "@react-navigation/native";
 import { StackNavigationProp } from "@react-navigation/stack";
 import { RootStackParamList } from "../config/navigationTypes";
 import { RadioButton } from "react-native-paper";
-import { handleLogout } from '../config/auth';
 import { onSnapshot } from "firebase/firestore"; // ✅ onSnapshot added
+import { signOut } from "firebase/auth";
+
 
 
 interface UserData {
@@ -21,51 +22,89 @@ interface UserData {
 
 type ProfileScreenNavigationProp = StackNavigationProp<RootStackParamList, "Profile">;
 
-export default function ProfileScreen() {
-  const navigation = useNavigation<ProfileScreenNavigationProp>();
-  const [userData, setUserData] = useState<UserData | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
-  const [updatedName, setUpdatedName] = useState("");
-  const [updatedAge, setUpdatedAge] = useState("");
-  const [updatedGender, setUpdatedGender] = useState("Male");
-  const [updatedBio, setUpdatedBio] = useState("");
 
-  useEffect(() => {
-      const currentUser = auth.currentUser;
-      if (!currentUser) {
-        setLoading(false);
-        Alert.alert("Error", "User not authenticated");
-        navigation.goBack();
-        return;
-      }
-    
-      const userDocRef = doc(db, "users", currentUser.uid);
-    
-      const unsubscribe = onSnapshot(
-        userDocRef,
-        (docSnap) => {
-          if (docSnap.exists()) {
-            const data = docSnap.data() as UserData;
-            setUserData(data);
-            if (!editing) {
-              setUpdatedName(data.name);
-              setUpdatedAge(data.age || "");
-              setUpdatedGender(data.gender || "Male");
-              setUpdatedBio(data.bio || "");
-            }
-          }
-          setLoading(false);
-        },
-        (error) => {
-          console.error("Error fetching live profile:", error);
-          Alert.alert("Error", "Failed to load profile data");
-          setLoading(false);
-        }
-      );
-    
-      return () => unsubscribe();
-    }, [navigation, editing]);
+export default function ProfileScreen() {
+    const navigation = useNavigation<ProfileScreenNavigationProp>();
+    const [userData, setUserData] = useState<UserData | null>(null);
+    const [loading, setLoading] = useState(true);
+    const [editing, setEditing] = useState(false);
+    const [updatedName, setUpdatedName] = useState("");
+    const [updatedAge, setUpdatedAge] = useState("");
+    const [updatedGender, setUpdatedGender] = useState("Male");
+    const [updatedBio, setUpdatedBio] = useState("");
+  
+  const unsubscribeRef = useRef<(() => void) | null>(null) as React.MutableRefObject<(() => void) | null>;
+
+  const handleLogout = async () => {
+    try {
+      // Cleanup
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+        unsubscribeRef.current = null;
+      }
+  
+      // Sign out
+      await signOut(auth);
+      
+      // Navigate
+      navigation.dispatch(
+        CommonActions.reset({
+          index: 0,
+          routes: [{ name: 'AuthStack' }],
+        })
+      );
+    } catch (error) {
+      let errorMessage = "Logout failed";
+      if (error instanceof Error) {
+        console.error("Logout Error:", error);
+        errorMessage = error.message;
+      }
+      Alert.alert("Error", errorMessage);
+    }
+  };
+
+    useEffect(() => {
+      const currentUser = auth.currentUser;
+      if (!currentUser) {
+        setLoading(false);
+        Alert.alert("Error", "User not authenticated");
+        navigation.goBack();
+        return;
+      }
+  
+      const userDocRef = doc(db, "users", currentUser.uid);
+  
+      const unsubscribe = onSnapshot(
+        userDocRef,
+        (docSnap) => {
+          if (docSnap.exists()) {
+            const data = docSnap.data() as UserData;
+            setUserData(data);
+            if (!editing) {
+              setUpdatedName(data.name);
+              setUpdatedAge(data.age || "");
+              setUpdatedGender(data.gender || "Male");
+              setUpdatedBio(data.bio || "");
+            }
+          }
+          setLoading(false);
+        },
+        (error) => {
+          console.error("Error fetching live profile:", error);
+          Alert.alert("Error", "Failed to load profile data");
+          setLoading(false);
+        }
+      );
+  
+      unsubscribeRef.current = unsubscribe; // 👈 Store unsubscribe function
+  
+      return () => {
+        if (unsubscribeRef.current) {
+          unsubscribeRef.current(); // 👈 Cleanup listener
+        }
+      };
+    }, [navigation, editing]);
+  
     
 
   const handleSave = async () => {
@@ -111,7 +150,7 @@ export default function ProfileScreen() {
         <Text style={styles.errorText}>User data not found.</Text>
         <TouchableOpacity
           style={styles.button}
-          onPress={() => navigation.goBack()}
+          onPress={() => navigation.navigate('Login')}
         >
           <Text style={styles.buttonText}>Go Back</Text>
         </TouchableOpacity>
@@ -122,7 +161,7 @@ export default function ProfileScreen() {
   return (
     <ScrollView contentContainerStyle={styles.container}>
       <View style={styles.profileHeader}>
-        <Ionicons name="person-circle" size={80} color="#007bff" />
+        <Ionicons name="person-circle" size={160} color="#007bff" />
       </View>
 
       <View style={styles.card}>
@@ -243,18 +282,12 @@ export default function ProfileScreen() {
 
         {!editing && (
           <TouchableOpacity 
-            style={[styles.button, styles.logoutButton]}
-            onPress={async () => {
-              await handleLogout();
-              navigation.reset({
-                index: 0,
-                routes: [{ name: 'Login' }],
-              });
-            }}
-          >
-            <Ionicons name="log-out-outline" size={20} color="#fff" />
-            <Text style={styles.buttonText}>Logout</Text>
-          </TouchableOpacity>
+          style={[styles.button, styles.logoutButton]}
+          onPress={handleLogout}
+        >
+          <Ionicons name="log-out-outline" size={20} color="#fff" />
+          <Text style={styles.buttonText}>Logout</Text>
+        </TouchableOpacity>
         )}
 
       </View>
@@ -278,11 +311,12 @@ const styles = StyleSheet.create({
   errorText: { 
     color: "red", 
     fontSize: 18,
-    marginBottom: 20
+    marginBottom: 20,
+    marginTop:30
   },
   profileHeader: { 
     alignItems: "center", 
-    marginBottom: 20 
+    margin: 50
   },
   card: { 
     width: "100%", 
@@ -290,22 +324,23 @@ const styles = StyleSheet.create({
     padding: 20, 
     borderRadius: 15, 
     shadowColor: "#000", 
-    shadowOpacity: 0.1, 
+    shadowOpacity: 0.9, 
     shadowRadius: 5, 
-    elevation: 3 
+    elevation: 20
   },
   infoRow: { 
-    marginBottom: 16,
+    marginBottom: 15,
   },
   label: { 
     fontWeight: "bold", 
     fontSize: 16, 
-    color: "#555",
+    color: "#007bff",
     marginBottom: 4
   },
   info: { 
     fontSize: 16, 
     color: "#333",
+    marginLeft: 5
   },
   input: { 
     padding: 10, 
@@ -321,7 +356,7 @@ const styles = StyleSheet.create({
   radioGroup: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 8
+    marginTop: 8,
   },
   radioOption: {
     flexDirection: "row",

@@ -1,9 +1,11 @@
-// ✅ Only use firebase/auth, not /react-native
+// src/config/firebaseConfig.ts
+
 import { initializeApp, FirebaseApp } from 'firebase/app';
 import { getAuth, Auth } from 'firebase/auth'; // ✅ use getAuth here
 import { getFirestore, Firestore } from 'firebase/firestore';
 import { getDatabase, Database } from 'firebase/database';
 import Constants from 'expo-constants';
+import { getStorage } from 'firebase/storage';
 
 
 export const firebaseConfig = {
@@ -29,5 +31,6 @@ try {
   console.error('Firebase initialization error:', error);
   throw new Error('Failed to initialize Firebase services');
 }
+export const storage = getStorage(app); 
 
 export { app, auth, db, dbRT };

@@ -4,11 +4,10 @@
     "slug": "ConvoConnect",
     "version": "1.0.0",
     "orientation": "portrait",
-    "icon": "./assets/splash.png",
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image": "./assets/splash.png",
+      "image":"splash.png",
       "resizeMode": "contain",
       "backgroundColor": "#afafda"
     },
@@ -17,12 +16,12 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "./assets/splash.png",
+        "foregroundImage": "/NewApp/src/assets/splash.png",
         "backgroundColor": "#afafda"
       }
     },
     "web": {
-      "favicon": "./assets/splash.png"
+      "favicon": "/NewApp/src/assets/splash.png"
     },
     "plugins": [
       "expo-font"

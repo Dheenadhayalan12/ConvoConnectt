@@ -18,30 +18,33 @@ import {
 
 // ✅ Updated Logout handler
 export const handleLogout = async () => {
-  try {
-    const userId = auth.currentUser?.uid;
-    if (!userId) throw new Error('User not authenticated');
-
-    // Get all userTopic documents for the current user
-    const userTopicsRef = collection(db, 'userTopics', userId, 'joinedTopics');
-    const snapshot = await getDocs(userTopicsRef);
-
-    const batch = writeBatch(db);
-
-    snapshot.forEach((docSnap) => {
-      const topicId = docSnap.id;
-      const presenceRef = doc(db, 'topics', topicId, 'onlineUsers', userId);
-      batch.delete(presenceRef); // remove from onlineUsers
-      batch.delete(docSnap.ref); // remove from userTopics
-    });
-
-    await batch.commit();
-    await signOut(auth);
-  } catch (error) {
-    console.error('Logout Error:', error);
-    throw error;
-  }
-};
+    try {
+      const userId = auth.currentUser?.uid;
+      if (!userId) throw new Error('User not authenticated');
+  
+      // Update user status
+      const statusRef = doc(db, 'status', userId);
+      await setDoc(statusRef, { online: false, lastSeen: serverTimestamp() });
+  
+      // Clean up topic presence
+      const userTopicsRef = collection(db, 'userTopics', userId, 'joinedTopics');
+      const snapshot = await getDocs(userTopicsRef);
+      const batch = writeBatch(db);
+  
+      snapshot.forEach((docSnap) => {
+        const topicId = docSnap.id;
+        const presenceRef = doc(db, 'topics', topicId, 'onlineUsers', userId);
+        batch.delete(presenceRef);
+        batch.delete(docSnap.ref);
+      });
+  
+      await batch.commit();
+      await signOut(auth);
+    } catch (error) {
+      console.error('Logout Error:', error);
+      throw error;
+    }
+  };
 
 // Sign in
 export const signIn = async (email: string, password: string) => {

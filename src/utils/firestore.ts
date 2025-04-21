@@ -1,3 +1,4 @@
+//src/util/firestore.ts
 import { QueryDocumentSnapshot, DocumentData } from 'firebase/firestore';
 import { Message } from '../types.js'; // Adjust import path as needed
 

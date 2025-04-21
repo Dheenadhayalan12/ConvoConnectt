@@ -9,11 +9,11 @@ import {
   ActivityIndicator,
   SafeAreaView,
 } from "react-native";
-import { useNavigation } from "@react-navigation/native";
 import { auth, db } from "../config/firebaseConfig";
 import { doc, onSnapshot } from "firebase/firestore";
-import { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { MainStackParamList } from "../config/navigationTypes";
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../config/navigationTypes';
 
 const topics = [
   { id: "1", title: "Artificial Intelligence", question: "Will AI take over jobs?" },
@@ -33,7 +33,7 @@ const topics = [
   { id: "15", title: "Funny & Embarrassing Stories", question: "What's the most awkward thing that happened to you? 😂" },
 ];
 
-type HomeScreenNavigationProp = NativeStackNavigationProp<MainStackParamList>;
+type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function HomeScreen() {
   const navigation = useNavigation<HomeScreenNavigationProp>();
@@ -70,7 +70,7 @@ export default function HomeScreen() {
   }, []);
 
   const handleTopicPress = (topicTitle: string) => {
-    navigation.navigate("TopicScreen", { topic: topicTitle });
+    navigation.navigate('TopicScreen', { topic: topicTitle });
   };
 
   return (

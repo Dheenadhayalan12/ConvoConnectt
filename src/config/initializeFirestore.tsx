@@ -1,3 +1,5 @@
+// src/config/initializeFirestore.ts
+
 import { db } from "./firebaseConfig.js";
 import { enableIndexedDbPersistence } from "firebase/firestore";
 

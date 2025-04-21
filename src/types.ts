@@ -1,3 +1,5 @@
+//src/types.ts
+
 import { Timestamp } from 'firebase/firestore';
 
 export type Message = {

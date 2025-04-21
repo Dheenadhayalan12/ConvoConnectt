@@ -1,3 +1,5 @@
+//src/types/firebase-auth-react-native.d.ts
+
 declare module 'firebase/auth/react-native' {
   import type {
     initializeAuth as _initializeAuth,

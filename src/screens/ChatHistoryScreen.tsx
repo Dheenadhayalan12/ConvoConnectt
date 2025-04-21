@@ -1,15 +1,13 @@
 // src/screens/ChatHistoryScreen.tsx
 import React, { useState, useEffect } from 'react';
 import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator } from 'react-native';
-import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { RootStackParamList } from '../config/navigationTypes';
 import { auth, db } from '../config/firebaseConfig';
 import { collection, query, onSnapshot, doc as firestoreDoc, getDoc, DocumentData } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { MainStackParamList } from '../config/navigationTypes';
-
+import { RootStackParamList } from '../config/navigationTypes';
 interface Chat {
   id: string;
   userId: string;
@@ -23,7 +21,7 @@ interface UserData {
   email?: string;
 }
 
-type ChatHistoryNavigationProp = NativeStackNavigationProp<MainStackParamList, 'MainTabs'>;
+type ChatHistoryNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
 export default function ChatHistoryScreen() {
   const navigation = useNavigation<ChatHistoryNavigationProp>();
@@ -65,7 +63,7 @@ export default function ChatHistoryScreen() {
   }, [userId]);
 
   const navigateToChat = (chatId: string, userName: string) => {
-    navigation.navigate("ChatScreen", { chatId, userName });
+    navigation.navigate('ChatScreen', { chatId, userName });
   };
 
   if (loading) {

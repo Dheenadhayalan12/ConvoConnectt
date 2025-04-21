@@ -1,23 +1,13 @@
 // src/config/navigationTypes.ts
 
 export type RootStackParamList = {
-  Profile: undefined;
-  Login: undefined;
   Splash: undefined;
-  AuthStack:undefined;
-  Auth: undefined;
+  Auth: { screen: string } | undefined;
   Main: undefined;
-  Home: undefined;
-  ChatScreen: { chatId: string; userName: string };
-  TopicScreen: { topic: string };
-};
-
-export type AuthStackParamList = {
   Login: undefined;
   Signup: undefined;
-  Home: undefined;
   TopicScreen: { topic: string };
-
+  ChatScreen: { chatId: string; userName: string };
 };
 
 export type MainTabParamList = {
@@ -27,10 +17,7 @@ export type MainTabParamList = {
   Profile: undefined;
 };
 
-
-export type MainStackParamList = {
-  MainTabs: undefined;
-  TopicScreen: { topic: string };
-  ChatScreen: { chatId: string; userName: string };
-  Friends: undefined;
+export type AuthStackParamList = {
+  Login: undefined;
+  Signup: undefined;
 };

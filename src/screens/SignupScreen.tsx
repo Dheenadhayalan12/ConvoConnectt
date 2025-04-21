@@ -1,3 +1,5 @@
+// src/screens/SignupScreen.tsx
+
 import React, { useState } from "react";
 import { 
   View, Text, TextInput, TouchableOpacity, StyleSheet, 
@@ -5,12 +7,14 @@ import {
 } from "react-native";
 import { useNavigation } from "@react-navigation/native";
 import { StackNavigationProp } from "@react-navigation/stack";
-import { AuthStackParamList } from "../config/navigationTypes";
 import { signUp } from "../config/auth";
 import { RadioButton } from "react-native-paper";
 import { LinearGradient } from "expo-linear-gradient";
+import { RootStackParamList } from "../config/navigationTypes";
+import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 
-type SignupScreenNavigationProp = StackNavigationProp<AuthStackParamList, "Signup">;
+type SignupScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Auth'>;
+
 
 export default function SignupScreen() {
   const navigation = useNavigation<SignupScreenNavigationProp>();

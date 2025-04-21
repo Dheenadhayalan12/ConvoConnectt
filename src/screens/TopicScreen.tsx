@@ -1,265 +1,173 @@
-// screens/TopicScreen.tsx
-import React, { useState, useEffect } from "react";
+import React, { useEffect, useState } from "react";
 import {
   View,
   Text,
   FlatList,
+  TextInput,
   TouchableOpacity,
+  KeyboardAvoidingView,
+  Platform,
   StyleSheet,
-  ActivityIndicator,
-  Alert,
 } from "react-native";
-import { useRoute, useNavigation } from "@react-navigation/native";
-import type { RouteProp } from "@react-navigation/native";
-import type { NativeStackNavigationProp } from "@react-navigation/native-stack";
-import { MainStackParamList } from "../config/navigationTypes";
-import { auth, db } from "../config/firebaseConfig";
+import { useRoute } from "@react-navigation/native";
 import {
-  doc,
-  getDoc,
-  setDoc,
-  deleteDoc,
   collection,
-  onSnapshot,
   query,
-  where,
-  Timestamp,
+  orderBy,
+  onSnapshot,
+  addDoc,
   serverTimestamp,
 } from "firebase/firestore";
+import { auth, db } from "../config/firebaseConfig"; // adjust the import based on your structure
 
-interface OnlineUser {
+interface Message {
   id: string;
-  name: string;
-  isFriend: boolean;
+  senderId: string;
+  senderName: string;
+  message: string;
+  timestamp: any;
 }
 
-type TopicScreenRouteProp = RouteProp<MainStackParamList, "TopicScreen">;
-type NavigationProp = NativeStackNavigationProp<MainStackParamList, "TopicScreen">;
+const TopicScreen = () => {
+  const route = useRoute();
+  const { topic } = route.params as { topic: string };
 
-// Improved sanitize function that handles more edge cases
-const sanitizeTopicName = (topic: string): string => {
-  // First trim whitespace, then replace special chars with underscore
-  // and ensure we don't end up with multiple underscores
-  return topic.trim()
-    .replace(/[^a-zA-Z0-9]/g, '_')
-    .replace(/_+/g, '_')
-    .toLowerCase();
-};
+  const [messages, setMessages] = useState<Message[]>([]);
+  const [newMessage, setNewMessage] = useState("");
 
-export default function TopicScreen() {
-  const route = useRoute<TopicScreenRouteProp>();
-  const navigation = useNavigation<NavigationProp>();
-  const { topic } = route.params;
-  const sanitizedTopic = sanitizeTopicName(topic);
-
-  const [onlineUsers, setOnlineUsers] = useState<OnlineUser[]>([]);
-  const [loading, setLoading] = useState(true);
-  const userId = auth.currentUser?.uid || "";
+  const topicKey = topic.toLowerCase().trim();
 
   useEffect(() => {
-    if (!userId) return;
+    const messagesRef = collection(db, "topics", topicKey, "messages");
+    const q = query(messagesRef, orderBy("timestamp", "asc"));
 
-    // Validate the sanitized topic name
-    if (!sanitizedTopic || sanitizedTopic.length === 0) {
-      console.error("Invalid topic name after sanitization");
-      return;
-    }
-
-    const userRef = doc(db, "topics", sanitizedTopic, "onlineUsers", userId);
-    const userTopicRef = doc(db, "userTopics", userId, sanitizedTopic);
-
-    const setupPresence = async () => {
-      try {
-        const userDoc = await getDoc(doc(db, "users", userId));
-        const userName = userDoc.exists() ? userDoc.data()?.name || "Anonymous" : "Anonymous";
-
-        await setDoc(
-          userRef,
-          {
-            name: userName,
-            joinedAt: serverTimestamp(),
-            lastSeen: serverTimestamp(),
-          },
-          { merge: true }
-        );
-
-        await setDoc(userTopicRef, {
-          joinedAt: serverTimestamp(),
-          originalTopicName: topic,
-        });
-
-        const interval = setInterval(() => {
-          setDoc(userRef, { lastSeen: serverTimestamp() }, { merge: true })
-            .catch(e => console.error("Error updating lastSeen:", e));
-        }, 30000);
-
-        return () => {
-          clearInterval(interval);
-          deleteDoc(userRef).catch((e) => console.log("Error removing from topic:", e));
-          deleteDoc(userTopicRef).catch((e) => console.log("Error removing userTopic:", e));
-        };
-      } catch (error) {
-        console.error("Error in setupPresence:", error);
-        Alert.alert("Error", "Could not establish presence in topic");
-      }
-    };
-
-    const cleanup = setupPresence();
-
-    return () => {
-      cleanup?.then((fn) => fn?.()).catch((e) => console.error("Cleanup error:", e));
-    };
-  }, [topic, userId, sanitizedTopic]);
-
-  useEffect(() => {
-    if (!userId || !sanitizedTopic) return;
-
-    const usersRef = collection(db, "topics", sanitizedTopic, "onlineUsers");
-    const q = query(usersRef, where("lastSeen", ">", Timestamp.fromDate(new Date(Date.now() - 60000))));
-
-    const unsubscribe = onSnapshot(q, async (snapshot) => {
-      try {
-        const users = await Promise.all(
-          snapshot.docs
-            .filter((doc) => doc.id !== userId)
-            .map(async (doc) => {
-              const data = doc.data();
-              return {
-                id: doc.id,
-                name: data?.name || "Anonymous",
-                isFriend: false,
-              };
-            })
-        );
-        setOnlineUsers(users);
-        setLoading(false);
-      } catch (error) {
-        console.error("Error fetching online users:", error);
-        setLoading(false);
-      }
-    }, (error) => {
-      console.error("Error in online users snapshot:", error);
-      setLoading(false);
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const msgs: Message[] = [];
+      snapshot.forEach((doc) => {
+        msgs.push({ id: doc.id, ...doc.data() } as Message);
+      });
+      setMessages(msgs);
     });
 
     return () => unsubscribe();
-  }, [topic, userId, sanitizedTopic]);
+  }, [topicKey]);
 
+  const sendMessage = async () => {
+    if (!newMessage.trim()) return;
+    const user = auth.currentUser;
+    if (!user) return;
 
-  const handleChatRequest = async (targetUser: OnlineUser) => {
-    try {
-      const friendDoc = await getDoc(doc(db, "friends", userId, "friendList", targetUser.id));
+    const messageRef = collection(db, "topics", topicKey, "messages");
+    await addDoc(messageRef, {
+      senderId: user.uid,
+      senderName: user.displayName || "Anonymous",
+      message: newMessage,
+      timestamp: serverTimestamp(),
+    });
 
-      if (friendDoc.exists()) {
-        const chatId = [userId, targetUser.id].sort().join("_");
-        navigation.navigate("ChatScreen", { chatId, userName: targetUser.name });
-        return;
-      }
-
-      const requestId = `${userId}_${targetUser.id}`;
-      await setDoc(doc(db, "friendRequests", requestId), {
-        from: userId,
-        to: targetUser.id,
-        status: "pending",
-        createdAt: serverTimestamp(),
-        topic: topic, // Using original topic name here
-      });
-
-      Alert.alert(
-        "Friend Request Sent",
-        `We've sent a friend request to ${targetUser.name}. You can chat once they accept.`,
-        [{ text: "OK", onPress: () => navigation.navigate("Friends") }]
-      );
-    } catch (error) {
-      console.error("Error sending chat request:", error);
-      Alert.alert("Error", "Failed to send chat request.");
-    }
+    setNewMessage("");
   };
 
-  // ... (keep the existing useEffect hooks for chat requests)
+  const renderItem = ({ item }: { item: Message }) => {
+    const isCurrentUser = item.senderId === auth.currentUser?.uid;
 
-  const renderUserItem = ({ item }: { item: OnlineUser }) => (
-    <View style={styles.userItem}>
-      <Text style={styles.userName}>{item.name}</Text>
-      <TouchableOpacity style={styles.chatButton} onPress={() => handleChatRequest(item)}>
-        <Text style={styles.chatButtonText}>Request Chat</Text>
-      </TouchableOpacity>
-    </View>
-  );
-
-  if (loading) {
     return (
-      <View style={styles.loadingContainer}>
-        <ActivityIndicator size="large" color="#007bff" />
+      <View
+        style={[
+          styles.messageContainer,
+          isCurrentUser ? styles.currentUser : styles.otherUser,
+        ]}
+      >
+        <Text style={styles.senderName}>{item.senderName}</Text>
+        <Text style={styles.messageText}>{item.message}</Text>
       </View>
     );
-  }
+  };
 
- return (
-    <View style={styles.container}>
-      <Text style={styles.topicTitle}>{topic}</Text>
-      <Text style={styles.onlineTitle}>Online Users ({onlineUsers.length})</Text>
-
+  return (
+    <KeyboardAvoidingView
+      style={styles.container}
+      behavior={Platform.OS === "ios" ? "padding" : undefined}
+      keyboardVerticalOffset={90}
+    >
       <FlatList
-        data={onlineUsers}
+        data={messages}
         keyExtractor={(item) => item.id}
-        renderItem={renderUserItem}
-        ListEmptyComponent={
-          <Text style={styles.emptyText}>
-            {loading ? "Loading..." : "No other users online"}
-          </Text>
-        }
-        contentContainerStyle={onlineUsers.length === 0 ? styles.emptyList : undefined}
+        renderItem={renderItem}
+        contentContainerStyle={styles.chatContainer}
       />
-    </View>
+
+      <View style={styles.inputContainer}>
+        <TextInput
+          style={styles.input}
+          value={newMessage}
+          onChangeText={setNewMessage}
+          placeholder="Type a message..."
+        />
+        <TouchableOpacity onPress={sendMessage} style={styles.sendButton}>
+          <Text style={styles.sendText}>Send</Text>
+        </TouchableOpacity>
+      </View>
+    </KeyboardAvoidingView>
   );
-}
+};
+
+export default TopicScreen;
 
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    padding: 20,
     backgroundColor: "#fff",
   },
-  loadingContainer: {
-    flex: 1,
-    justifyContent: "center",
+  chatContainer: {
+    padding: 10,
+    paddingBottom: 80,
   },
-  topicTitle: {
-    fontSize: 24,
+  messageContainer: {
+    marginVertical: 4,
+    padding: 10,
+    borderRadius: 10,
+    maxWidth: "80%",
+  },
+  currentUser: {
+    backgroundColor: "#dcf8c6",
+    alignSelf: "flex-end",
+  },
+  otherUser: {
+    backgroundColor: "#f1f1f1",
+    alignSelf: "flex-start",
+  },
+  senderName: {
     fontWeight: "bold",
-    marginBottom: 10,
+    marginBottom: 2,
   },
-  onlineTitle: {
-    fontSize: 18,
-    marginBottom: 15,
-  },
-  userItem: {
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    padding: 15,
-    backgroundColor: "#f5f5f5",
-    marginBottom: 10,
-    borderRadius: 8,
-  },
-  userName: {
+  messageText: {
     fontSize: 16,
   },
-  chatButton: {
-    backgroundColor: "#007bff",
-    padding: 8,
-    borderRadius: 5,
+  inputContainer: {
+    position: "absolute",
+    bottom: 0,
+    flexDirection: "row",
+    alignItems: "center",
+    padding: 10,
+    width: "100%",
+    backgroundColor: "#fff",
+    borderTopWidth: 1,
+    borderColor: "#ccc",
   },
-  chatButtonText: {
-    color: "white",
-  },
-  emptyText: {
-    textAlign: "center",
-    color: "#666",
-  },
-  emptyList: {
+  input: {
     flex: 1,
-    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#ccc",
+    borderRadius: 20,
+    paddingHorizontal: 15,
+    paddingVertical: 8,
+  },
+  sendButton: {
+    marginLeft: 10,
+  },
+  sendText: {
+    color: "#007bff",
+    fontWeight: "bold",
   },
 });

@@ -1,18 +1,22 @@
+// src/screens/LoginScreen.tsx
+
 import React, { useState } from "react";
 import { 
   View, Text, TextInput, TouchableOpacity, 
   StyleSheet, Alert, ActivityIndicator 
 } from "react-native";
-import { useNavigation } from "@react-navigation/native";
 import { StackNavigationProp } from "@react-navigation/stack";
-import { AuthStackParamList } from "../config/navigationTypes";
 import { signIn } from "../config/auth";
 import * as Animatable from "react-native-animatable";
 import { LinearGradient } from "expo-linear-gradient";
 import { auth } from '../config/auth';
+import { useNavigation } from '@react-navigation/native';
+import { NativeStackNavigationProp } from '@react-navigation/native-stack';
+import { RootStackParamList } from '../config/navigationTypes';
 console.log("Firebase Auth initialized:", auth);
 
-type LoginScreenNavigationProp = StackNavigationProp<AuthStackParamList, "Login">;
+
+type LoginScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Auth'>;
 
 export default function LoginScreen() {
   const navigation = useNavigation<LoginScreenNavigationProp>();
@@ -89,7 +93,7 @@ export default function LoginScreen() {
 
       {/* Signup Link */}
       <Animatable.View animation="fadeInUp" delay={1100}>
-        <TouchableOpacity onPress={() => navigation.navigate("Signup")}>
+        <TouchableOpacity onPress={() => navigation.navigate('Signup')}>
           <Text style={styles.linkText}>Don't have an account? Sign Up</Text>
         </TouchableOpacity>
       </Animatable.View>

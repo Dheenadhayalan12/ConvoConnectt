@@ -1,8 +1,9 @@
+// src/screens/SplashScreen.tsx
+
 import React, { useEffect } from 'react';
 import { View, Text, StyleSheet } from 'react-native';
 import * as Animatable from 'react-native-animatable';
 import { LinearGradient } from "expo-linear-gradient";
-import AuthNavigator from '../navigation/AuthNavigator';
 import { auth } from '../config/auth';
 
 export default function SplashScreen({ navigation }: any) {

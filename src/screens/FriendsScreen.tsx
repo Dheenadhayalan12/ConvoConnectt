@@ -4,14 +4,12 @@ import { View, Text, FlatList, TouchableOpacity, StyleSheet, ActivityIndicator }
 import { auth, db } from '../config/firebaseConfig';
 import { collection, query, where, onSnapshot, doc as firestoreDoc, getDoc } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
 import { StackNavigationProp } from '@react-navigation/stack';
-import { RootStackParamList } from '../config/navigationTypes';
+import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
-import { MainStackParamList } from '../config/navigationTypes';
+import { RootStackParamList } from '../config/navigationTypes';
 
-type FriendsNavigationProp = NativeStackNavigationProp<MainStackParamList, 'MainTabs'>;
-
+type FriendsNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 interface Friend {
   id: string;
   name: string;

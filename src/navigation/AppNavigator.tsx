@@ -1,5 +1,4 @@
-
-//src/navigation/AppNavigator.tsx
+// src/navigation/AppNavigator.tsx
 import React from 'react';
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -12,15 +11,15 @@ import { auth } from '../config/firebaseConfig';
 import LoginScreen from '../screens/LoginScreen';
 import SignupScreen from '../screens/SignupScreen';
 import HomeScreen from '../screens/HomeScreen';
-import ChatHistoryScreen from '../screens/ChatHistoryScreen';
-import FriendsScreen from '../screens/FriendsScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import SplashScreen from '../screens/SplashScreen';
 import TopicScreen from '../screens/TopicScreen';
 import ChatScreen from '../screens/ChatScreen';
+import AddTopicsScreen from '../screens/AddTopicsScreen';
+
 import { AuthStackParamList } from '../config/navigationTypes';
 
-// Types
+// Navigation Types
 export type RootStackParamList = {
   Splash: undefined;
   Auth: undefined;
@@ -34,14 +33,12 @@ export type RootStackParamList = {
 
 export type MainTabParamList = {
   Home: undefined;
-  ChatHistory: undefined;
-  Friends: undefined;
+  AddTopics: undefined;
   Profile: undefined;
 };
 
 // Auth Stack
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
-
 function AuthStackNavigator() {
   return (
     <AuthStack.Navigator screenOptions={{ headerShown: false }}>
@@ -51,18 +48,15 @@ function AuthStackNavigator() {
   );
 }
 
-// Main Tabs
+// Main Tab Navigator
 const Tab = createBottomTabNavigator<MainTabParamList>();
-
 function MainTabNavigator() {
   const getIconName = (routeName: keyof MainTabParamList, focused: boolean) => {
     switch (routeName) {
       case 'Home':
         return focused ? 'home' : 'home-outline';
-      case 'ChatHistory':
-        return focused ? 'chatbubbles' : 'chatbubbles-outline';
-      case 'Friends':
-        return focused ? 'people' : 'people-outline';
+      case 'AddTopics':
+        return focused ? 'add-circle' : 'add-circle-outline';
       case 'Profile':
         return focused ? 'person' : 'person-outline';
       default:
@@ -82,8 +76,7 @@ function MainTabNavigator() {
       })}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
-      <Tab.Screen name="ChatHistory" component={ChatHistoryScreen} />
-      <Tab.Screen name="Friends" component={FriendsScreen} />
+      <Tab.Screen name="AddTopics" component={AddTopicsScreen} />
       <Tab.Screen name="Profile" component={ProfileScreen} />
     </Tab.Navigator>
   );
@@ -91,7 +84,6 @@ function MainTabNavigator() {
 
 // Root Navigator
 const RootStack = createNativeStackNavigator<RootStackParamList>();
-
 export default function AppNavigator() {
   const [user, loading] = useAuthState(auth);
 

@@ -7,7 +7,7 @@
     "userInterfaceStyle": "light",
     "newArchEnabled": true,
     "splash": {
-      "image":"splash.png",
+      "image":"./src/assets/splashicon.png",
       "resizeMode": "contain",
       "backgroundColor": "#afafda"
     },
@@ -16,12 +16,12 @@
     },
     "android": {
       "adaptiveIcon": {
-        "foregroundImage": "/NewApp/src/assets/splash.png",
+        "foregroundImage": "./src/assets/splashicon.png",
         "backgroundColor": "#afafda"
       }
     },
     "web": {
-      "favicon": "/NewApp/src/assets/splash.png"
+      "favicon": "./src/assets/splashicon.png"
     },
     "plugins": [
       "expo-font"

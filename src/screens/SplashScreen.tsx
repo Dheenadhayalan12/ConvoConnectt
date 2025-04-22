@@ -15,7 +15,7 @@ export default function SplashScreen({ navigation }: any) {
       } else {
         navigation.replace('Auth', { screen: 'Login' });
       }
-    }, 3500);
+    }, 1000);
   
     return () => clearTimeout(timer);
   }, []);

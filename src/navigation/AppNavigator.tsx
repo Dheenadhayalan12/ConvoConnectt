@@ -70,7 +70,7 @@ function MainTabNavigator() {
         tabBarIcon: ({ focused, color, size }) => (
           <Ionicons name={getIconName(route.name, focused)} size={size} color={color} />
         ),
-        tabBarActiveTintColor: '#007bff',
+        tabBarActiveTintColor: '#8f8fc2',
         tabBarInactiveTintColor: 'gray',
         headerShown: false,
       })}

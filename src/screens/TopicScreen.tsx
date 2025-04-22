@@ -37,6 +37,7 @@ const TopicScreen = () => {
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
+  const [isChatCleared, setIsChatCleared] = useState(false);
 
   const topicKey = topic.toLowerCase().trim();
 
@@ -51,7 +52,7 @@ const TopicScreen = () => {
         msgs.push({
           id: doc.id,
           senderId: data.senderId,
-          senderName: data.senderName || "User", // Fallback to "User" instead of "Anonymous"
+          senderName: data.senderName || "User",
           message: data.message,
           timestamp: data.timestamp,
         });
@@ -67,18 +68,21 @@ const TopicScreen = () => {
     const user = auth.currentUser;
     if (!user) return;
 
-    // Ensure we have a display name
-    const displayName = user.displayName || user.email?.split('@')[0] || "User";
+    const displayName = user.displayName || user.email?.split("@")[0] || "User";
 
     const messageRef = collection(db, "topics", topicKey, "messages");
     await addDoc(messageRef, {
       senderId: user.uid,
-      senderName: displayName, // Use the determined display name
+      senderName: displayName,
       message: newMessage,
       timestamp: serverTimestamp(),
     });
 
     setNewMessage("");
+  };
+
+  const clearChat = () => {
+    setIsChatCleared(true);
   };
 
   const formatTime = (timestamp: any) => {
@@ -125,72 +129,99 @@ const TopicScreen = () => {
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
       >
+        {/* Header with topic and delete icon */}
         <View style={styles.header}>
-          <Text style={styles.topicTitle}>{topic}</Text>
+          <View style={styles.topicContainer}>
+            <Text style={styles.topicLabel}>Topic:</Text>
+            <Text style={styles.topicTitle} numberOfLines={1} ellipsizeMode="tail">
+              {topic}
+            </Text>
+          </View>
+          <TouchableOpacity onPress={clearChat} style={styles.clearButton}>
+            <Ionicons name="trash-outline" size={24} color="#fff" />
+          </TouchableOpacity>
         </View>
-
-        <FlatList
-          data={messages}
-          keyExtractor={(item) => item.id}
-          renderItem={renderItem}
-          contentContainerStyle={styles.chatContainer}
-          inverted={false}
-          showsVerticalScrollIndicator={false}
-        />
-
+  
+        {/* Messages */}
+        <View style={styles.chatBackground}>
+          <FlatList
+            data={isChatCleared ? [] : messages}
+            keyExtractor={(item) => item.id}
+            renderItem={renderItem}
+            contentContainerStyle={styles.chatContainer}
+            inverted={false}
+            showsVerticalScrollIndicator={false}
+          />
+        </View>
+  
+        {/* Message Input */}
         <View style={styles.inputContainer}>
           <TextInput
             style={styles.input}
             value={newMessage}
             onChangeText={setNewMessage}
             placeholder="Type a message..."
-            placeholderTextColor="#999"
+            placeholderTextColor="#afafda"
             multiline
           />
-          <TouchableOpacity 
-            onPress={sendMessage} 
-            style={styles.sendButton}
+          <TouchableOpacity
+            onPress={sendMessage}
+            style={[
+              styles.sendButton,
+              { backgroundColor: newMessage.trim() ? "#afafda" : "#d0d0e8" }
+            ]}
             disabled={!newMessage.trim()}
           >
-            <Ionicons 
-              name="send" 
-              size={24} 
-              color={newMessage.trim() ? "#007AFF" : "#ccc"} 
+            <Ionicons
+              name="send"
+              size={20}
+              color={newMessage.trim() ? "#fff" : "#f0f0f0"}
             />
           </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
-  );
+  );  
 };
 
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#f9f5fa",
   },
   container: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#f9f5fa",
   },
   header: {
-    padding: 15,
-    borderBottomWidth: 1,
-    borderBottomColor: "#e0e0e0",
-    backgroundColor: "#fff",
+    padding: 20,
+    backgroundColor: "#afafda",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    borderBottomLeftRadius: 20,
+    borderBottomRightRadius: 20,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
   },
-  topicTitle: {
-    fontSize: 20,
-    fontWeight: "bold",
-    textAlign: "center",
-    color: "#333",
+  topicContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    flex: 1,
+  },
+  chatBackground: {
+    flex: 1,
+    backgroundColor: "#f9f5fa",
   },
   chatContainer: {
     padding: 15,
     paddingBottom: 80,
   },
   messageContainer: {
-    marginBottom: 15,
+    marginBottom: 16,
   },
   currentUserContainer: {
     alignItems: "flex-end",
@@ -199,63 +230,91 @@ const styles = StyleSheet.create({
     alignItems: "flex-start",
   },
   senderName: {
-    fontSize: 12,
-    color: "#666",
+    fontSize: 13,
+    color: "#7a7a9d",
     marginBottom: 4,
-    marginLeft: 8,
+    marginLeft: 12,
+    fontWeight: "600",
   },
   messageBubble: {
     maxWidth: "80%",
-    paddingVertical: 10,
-    paddingHorizontal: 15,
-    borderRadius: 18,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 20,
+    marginVertical: 4,
   },
   currentUserBubble: {
-    backgroundColor: "#007AFF",
+    backgroundColor: "#afafda",
     borderBottomRightRadius: 4,
   },
   otherUserBubble: {
-    backgroundColor: "#fff",
+    backgroundColor: "#e9dfe9",
     borderBottomLeftRadius: 4,
-    borderWidth: 1,
-    borderColor: "#e0e0e0",
   },
   currentUserText: {
     color: "#fff",
     fontSize: 16,
   },
   otherUserText: {
-    color: "#333",
+    color: "#5a5a78",
     fontSize: 16,
   },
   timestamp: {
-    fontSize: 10,
-    color: "#999",
+    fontSize: 11,
+    color: "#9a9ac0",
     marginTop: 4,
-    marginHorizontal: 8,
+    marginHorizontal: 10,
   },
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
-    padding: 10,
+    padding: 12,
     paddingBottom: 20,
     backgroundColor: "#fff",
     borderTopWidth: 1,
-    borderColor: "#e0e0e0",
+    borderColor: "#e9dfe9",
   },
   input: {
     flex: 1,
-    backgroundColor: "#f0f0f0",
-    borderRadius: 20,
-    paddingHorizontal: 15,
-    paddingVertical: 10,
-    maxHeight: 100,
+    backgroundColor: "#f5f5ff",
+    borderRadius: 24,
+    paddingHorizontal: 18,
+    paddingVertical: 12,
+    maxHeight: 120,
     fontSize: 16,
-    color: "#333",
+    color: "#5a5a78",
+    borderWidth: 1,
+    borderColor: "#e9dfe9",
   },
   sendButton: {
     marginLeft: 10,
-    padding: 10,
+    padding: 12,
+    borderRadius: 24,
+    width: 48,
+    height: 48,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  clearButton: {
+    backgroundColor: "#d0a0b9",
+    padding: 8,
+    borderRadius: 10,
+    marginLeft: 10,
+    marginTop: 20,
+  },
+  topicLabel: {
+    marginTop: 20,
+    fontSize: 15,
+    color: "#f0f0ff",
+    marginRight: 8,
+    fontWeight: "500",
+  },
+  topicTitle: {
+    marginTop: 20,
+    fontSize: 20,
+    fontWeight: "bold",
+    color: "#fff",
+    flexShrink: 1,
   },
 });
 

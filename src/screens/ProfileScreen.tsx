@@ -7,8 +7,8 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Alert,
   ScrollView,
+  Animated,
 } from "react-native";
 import { auth, db } from "../config/firebaseConfig";
 import { doc, updateDoc, onSnapshot } from "firebase/firestore";
@@ -40,10 +40,28 @@ export default function ProfileScreen() {
   const [updatedGender, setUpdatedGender] = useState("Male");
   const [updatedBio, setUpdatedBio] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-
+  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  
+  const fadeAnim = useRef(new Animated.Value(0)).current;
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
-  // Memoized gender option renderer to prevent unnecessary re-renders
+  const showMessage = (text: string, type: 'success' | 'error') => {
+    setMessage({ text, type });
+    Animated.sequence([
+      Animated.timing(fadeAnim, {
+        toValue: 1,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+      Animated.delay(3000),
+      Animated.timing(fadeAnim, {
+        toValue: 0,
+        duration: 300,
+        useNativeDriver: true,
+      }),
+    ]).start(() => setMessage(null));
+  };
+
   const renderGenderOption = useCallback(
     (gender: string) => (
       <TouchableOpacity
@@ -79,7 +97,7 @@ export default function ProfileScreen() {
       );
     } catch (error) {
       console.error("Logout Error:", error);
-      Alert.alert("Error", "Logout failed. Please try again.");
+      showMessage("Logout failed. Please try again.", 'error');
     }
   };
 
@@ -87,7 +105,7 @@ export default function ProfileScreen() {
     const currentUser = auth.currentUser;
     if (!currentUser) {
       setLoading(false);
-      Alert.alert("Error", "User not authenticated");
+      showMessage("User not authenticated", 'error');
       navigation.goBack();
       return;
     }
@@ -110,7 +128,7 @@ export default function ProfileScreen() {
       },
       (error) => {
         console.error("Error fetching live profile:", error);
-        Alert.alert("Error", "Failed to load profile data");
+        showMessage("Failed to load profile data", 'error');
         setLoading(false);
       }
     );
@@ -129,12 +147,12 @@ export default function ProfileScreen() {
     
     const currentUser = auth.currentUser;
     if (!currentUser || !userData) {
-      Alert.alert("Error", "User not authenticated");
+      showMessage("User not authenticated", 'error');
       return;
     }
 
     if (!updatedName.trim() || !updatedAge.trim() || !updatedGender.trim()) {
-      Alert.alert("Error", "Please fill all required fields");
+      showMessage("Please fill all required fields", 'error');
       return;
     }
 
@@ -148,10 +166,10 @@ export default function ProfileScreen() {
         bio: updatedBio,
       });
       setEditing(false);
-      Alert.alert("Success", "Profile updated successfully!");
+      showMessage("Profile updated successfully!", 'success');
     } catch (error) {
       console.error("Error updating profile:", error);
-      Alert.alert("Error", "Failed to update profile. Please try again.");
+      showMessage("Failed to update profile. Please try again.", 'error');
     } finally {
       setIsSubmitting(false);
     }
@@ -182,6 +200,34 @@ export default function ProfileScreen() {
 
   return (
     <ScrollView contentContainerStyle={styles.container}>
+      {/* Message Notification */}
+      {message && (
+        <Animated.View
+          style={[
+            styles.messageContainer,
+            {
+              backgroundColor: message.type === 'success' ? '#4CAF50' : '#F44336',
+              opacity: fadeAnim,
+              transform: [
+                {
+                  translateY: fadeAnim.interpolate({
+                    inputRange: [0, 1],
+                    outputRange: [-20, 0],
+                  }),
+                },
+              ],
+            },
+          ]}
+        >
+          <Ionicons
+            name={message.type === 'success' ? 'checkmark-circle' : 'warning'}
+            size={20}
+            color="#fff"
+          />
+          <Text style={styles.messageText}>{message.text}</Text>
+        </Animated.View>
+      )}
+
       <View style={styles.header}>
         <View style={styles.avatarContainer}>
           <Text style={styles.avatarText}>
@@ -352,8 +398,8 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   avatarContainer: {
-    width: 100,
-    height: 100,
+    width: 85,
+    height: 85,
     borderRadius: 50,
     backgroundColor: "#fff",
     justifyContent: "center",
@@ -366,6 +412,7 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 6,
     elevation: 3,
+    marginTop: 20,
   },
   avatarText: {
     fontSize: 36,
@@ -373,7 +420,7 @@ const styles = StyleSheet.create({
     color: "#afafda",
   },
   userName: {
-    fontSize: 20,
+    fontSize: 30,
     fontWeight: "700",
     color: "#fff",
     marginBottom: 4,
@@ -409,9 +456,10 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
   },
   fieldValue: {
-    fontSize: 15,
-    color: "#333",
+    fontSize: 16,
+    color: "#8f8fda",
     lineHeight: 22,
+    marginLeft: 10,
   },
   emptyBio: {
     color: "#999",
@@ -507,5 +555,30 @@ const styles = StyleSheet.create({
     height: 10,
     borderRadius: 5,
     backgroundColor: "#afafda",
+  },
+  // Message notification styles
+  messageContainer: {
+    position: 'absolute',
+    top: 20,
+    left: 20,
+    right: 20,
+    padding: 15,
+    borderRadius: 8,
+    flexDirection: 'row',
+    alignItems: 'center',
+    zIndex: 1000,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+    marginTop: 40 ,
+  },
+  messageText: {
+    color: '#fff',
+    fontSize: 15,
+    fontWeight: '500',
+    marginLeft: 10,
+    flex: 1,
   },
 });

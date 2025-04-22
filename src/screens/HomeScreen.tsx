@@ -8,9 +8,10 @@ import {
   StyleSheet,
   ActivityIndicator,
   SafeAreaView,
+  Alert,
 } from 'react-native';
 import { auth, db } from '../config/firebaseConfig';
-import { collection, query, onSnapshot, orderBy, doc } from 'firebase/firestore';
+import { collection, query, onSnapshot, orderBy, doc, deleteDoc } from 'firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../config/navigationTypes';
@@ -18,11 +19,21 @@ import { Ionicons } from '@expo/vector-icons';
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
+interface Topic {
+  id: string;
+  title: string;
+  question: string;
+  participants?: number;
+  createdAt: any;
+  createdBy?: string; // Add createdBy field to track who created the topic
+}
+
 export default function HomeScreen() {
   const navigation = useNavigation<HomeScreenNavigationProp>();
   const [userName, setUserName] = useState<string>('');
+  const [userId, setUserId] = useState<string>('');
   const [loading, setLoading] = useState(true);
-  const [topics, setTopics] = useState<any[]>([]);
+  const [topics, setTopics] = useState<Topic[]>([]);
 
   useEffect(() => {
     const currentUser = auth.currentUser;
@@ -30,6 +41,8 @@ export default function HomeScreen() {
       setLoading(false);
       return;
     }
+
+    setUserId(currentUser.uid);
 
     const userDocRef = doc(db, 'users', currentUser.uid);
 
@@ -61,7 +74,7 @@ export default function HomeScreen() {
       const topicsData = snapshot.docs.map((doc) => ({
         id: doc.id,
         ...doc.data(),
-      }));
+      })) as Topic[];
       setTopics(topicsData);
     });
 
@@ -71,6 +84,65 @@ export default function HomeScreen() {
   const handleTopicPress = (topicTitle: string) => {
     navigation.navigate('TopicScreen', { topic: topicTitle });
   };
+
+  const handleDeleteTopic = async (topicId: string) => {
+    Alert.alert(
+      'Delete Topic',
+      'Are you sure you want to delete this topic?',
+      [
+        {
+          text: 'Cancel',
+          style: 'cancel',
+        },
+        {
+          text: 'Delete',
+          style: 'destructive',
+          onPress: async () => {
+            try {
+              await deleteDoc(doc(db, 'topics', topicId));
+              // Optional: Show success message
+            } catch (error) {
+              console.error('Error deleting topic:', error);
+              Alert.alert('Error', 'Failed to delete topic. Please try again.');
+            }
+          },
+        },
+      ]
+    );
+  };
+
+  const renderTopicItem = ({ item }: { item: Topic }) => (
+    <TouchableOpacity
+      style={styles.topicButton}
+      onPress={() => handleTopicPress(item.title)}
+    >
+      <View style={styles.topicHeader}>
+        <Text style={styles.topicTitle}>{item.title}</Text>
+        <View style={styles.topicActions}>
+          {/* Only show delete button if current user created the topic */}
+          {item.createdBy === userId && (
+            <TouchableOpacity
+              onPress={(e) => {
+                e.stopPropagation(); // Prevent triggering the parent TouchableOpacity
+                handleDeleteTopic(item.id);
+              }}
+              style={styles.deleteButton}
+            >
+              <Ionicons name="trash-outline" size={20} color="#e53935" />
+            </TouchableOpacity>
+          )}
+          <Ionicons name="chevron-forward" size={20} color="#afafda" />
+        </View>
+      </View>
+      <Text style={styles.topicQuestion}>{item.question}</Text>
+      <View style={styles.topicFooter}>
+        <Ionicons name="people" size={14} color="#9a9ac0" />
+        <Text style={styles.topicParticipants}>
+          {item.participants || 0} participants
+        </Text>
+      </View>
+    </TouchableOpacity>
+  );
 
   return (
     <SafeAreaView style={styles.container}>
@@ -101,24 +173,7 @@ export default function HomeScreen() {
             keyExtractor={(item) => item.id}
             showsVerticalScrollIndicator={false}
             contentContainerStyle={styles.listContainer}
-            renderItem={({ item }) => (
-              <TouchableOpacity
-                style={styles.topicButton}
-                onPress={() => handleTopicPress(item.title)}
-              >
-                <View style={styles.topicHeader}>
-                  <Text style={styles.topicTitle}>{item.title}</Text>
-                  <Ionicons name="chevron-forward" size={20} color="#afafda" />
-                </View>
-                <Text style={styles.topicQuestion}>{item.question}</Text>
-                <View style={styles.topicFooter}>
-                  <Ionicons name="people" size={14} color="#9a9ac0" />
-                  <Text style={styles.topicParticipants}>
-                    {item.participants || 0} participants
-                  </Text>
-                </View>
-              </TouchableOpacity>
-            )}
+            renderItem={renderTopicItem}
           />
         )}
       </View>
@@ -193,6 +248,13 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 8,
+  },
+  topicActions: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  deleteButton: {
+    marginRight: 15,
   },
   topicTitle: {
     fontSize: 17,

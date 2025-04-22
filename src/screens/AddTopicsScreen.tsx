@@ -9,7 +9,7 @@ import {
   KeyboardAvoidingView,
   Platform 
 } from 'react-native';
-import { db } from '../config/firebaseConfig';
+import { auth, db } from '../config/firebaseConfig';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import { Ionicons } from '@expo/vector-icons';
 
@@ -30,12 +30,14 @@ export default function AddTopicsScreen({ navigation }) {
         title,
         question,
         createdAt: serverTimestamp(),
-        participants: 0
+        participants: 0,
+        createdBy: auth.currentUser?.uid,
       });
   
       setTitle('');
       setQuestion('');
       setSuccess('Topic added successfully!');
+      setTimeout(() => setSuccess(''), 3000);
       if (navigation.canGoBack()) {
         navigation.goBack();
       } else {
@@ -53,38 +55,43 @@ export default function AddTopicsScreen({ navigation }) {
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.container}
       >
-        {/* Header - Ensure all text is properly wrapped */}
+        {/* Header */}
         <View style={styles.header}>
-        <TouchableOpacity onPress={() => {
+          <TouchableOpacity 
+            onPress={() => {
               if (navigation.canGoBack()) {
                 navigation.goBack();
               } else {
                 navigation.navigate('Home');
               }
-            }}>
-             <Ionicons name="arrow-back" size={28} color="#fff" style={styles.backIcon} />
-            </TouchableOpacity>
-          <Text style={styles.headerTitle}>Create New Topic</Text>
-          <View style={{ width: 28 }} /> {/* Empty View for alignment */}
+            }}
+            style={styles.backButton}
+          >
+            <Ionicons name="arrow-back" size={28} color="#fff" />
+          </TouchableOpacity>
+          <View style={styles.headerTitleContainer}>
+            <Text style={styles.headerTitle}>Create New Topic</Text>
+          </View>
+          <View style={styles.headerSpacer} />
         </View>
   
         {/* Form Container */}
         <View style={styles.formContainer}>
-          {/* Error Message - Ensure conditional rendering is safe */}
-          {Boolean(error) && (
+          {/* Error Message */}
+          {error ? (
             <View style={styles.errorContainer}>
               <Ionicons name="warning" size={18} color="#fff" />
-              <Text style={styles.errorText}>{String(error)}</Text>
+              <Text style={styles.errorText}>{error}</Text>
             </View>
-          )}
+          ) : null}
   
-          {/* Success Message - Ensure conditional rendering is safe */}
-          {Boolean(success) && (
+          {/* Success Message */}
+          {success ? (
             <View style={styles.successContainer}>
               <Ionicons name="checkmark-circle" size={18} color="#fff" />
-              <Text style={styles.successText}>{String(success)}</Text>
+              <Text style={styles.successText}>{success}</Text>
             </View>
-          )}
+          ) : null}
   
           {/* Input Fields */}
           <View style={styles.inputContainer}>
@@ -135,7 +142,6 @@ export default function AddTopicsScreen({ navigation }) {
       </KeyboardAvoidingView>
     </SafeAreaView>
   );
-
 }
 
 const styles = StyleSheet.create({
@@ -160,11 +166,21 @@ const styles = StyleSheet.create({
     shadowRadius: 8,
     elevation: 5,
   },
+  backButton: {
+    padding: 5,
+  },
+  headerTitleContainer: {
+    flex: 1,
+    alignItems: 'center',
+  },
   headerTitle: {
-    marginTop: 20,
     fontSize: 20,
     fontWeight: 'bold',
     color: '#fff',
+    textAlign: 'center',
+  },
+  headerSpacer: {
+    width: 28,
   },
   formContainer: {
     flex: 1,
@@ -249,8 +265,4 @@ const styles = StyleSheet.create({
     marginLeft: 10,
     fontSize: 15,
   },
-  backIcon:{
-    marginTop: 20,
-  }
-
 });

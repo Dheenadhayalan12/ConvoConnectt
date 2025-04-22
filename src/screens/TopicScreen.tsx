@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
   Text,
@@ -10,7 +10,7 @@ import {
   StyleSheet,
   SafeAreaView,
 } from "react-native";
-import { useRoute } from "@react-navigation/native";
+import { useRoute, useFocusEffect } from "@react-navigation/native";
 import {
   collection,
   query,
@@ -18,6 +18,11 @@ import {
   onSnapshot,
   addDoc,
   serverTimestamp,
+  where,
+  getDocs,
+  deleteDoc,
+  doc,
+  updateDoc,
 } from "firebase/firestore";
 import { auth, db } from "../config/firebaseConfig";
 import { Ionicons } from "@expo/vector-icons";
@@ -31,16 +36,120 @@ interface Message {
   timestamp: any;
 }
 
+interface Participant {
+  userId: string;
+  userName: string;
+  docId: string;
+  lastActive: any;
+  isOnline?: boolean;
+}
+
+const ONLINE_THRESHOLD = 30000; // 30 seconds in milliseconds
+
 const TopicScreen = () => {
   const route = useRoute();
   const { topic } = route.params as { topic: string };
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
-  const [isChatCleared, setIsChatCleared] = useState(false);
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [currentParticipantDocId, setCurrentParticipantDocId] = useState<string | null>(null);
+  const [onlineCount, setOnlineCount] = useState(0);
 
   const topicKey = topic.toLowerCase().trim();
 
+  // Calculate online status based on lastActive timestamp
+  const calculateOnlineStatus = (participant: Participant) => {
+    if (!participant.lastActive) return false;
+    
+    try {
+      const lastActiveTime = participant.lastActive.toDate().getTime();
+      const currentTime = new Date().getTime();
+      return currentTime - lastActiveTime < ONLINE_THRESHOLD;
+    } catch (error) {
+      console.error("Error calculating online status:", error);
+      return false;
+    }
+  };
+
+  // Update online count whenever participants change
+  useEffect(() => {
+    const onlineParticipants = participants.filter(p => calculateOnlineStatus(p));
+    setOnlineCount(onlineParticipants.length);
+  }, [participants]);
+
+  const addCurrentUser = useCallback(async () => {
+    const user = auth.currentUser;
+    if (!user) return;
+  
+    const displayName = user.displayName || user.email?.split("@")[0] || `User_${user.uid.substring(0, 5)}`;
+    const participantsRef = collection(db, "topics", topicKey, "participants");
+    
+    try {
+      // Check if user already exists in participants
+      const participantQuery = query(
+        participantsRef,
+        where("userId", "==", user.uid)
+      );
+      const existingParticipant = await getDocs(participantQuery);
+  
+      if (existingParticipant.empty) {
+        // Add new participant
+        const docRef = await addDoc(participantsRef, {
+          userId: user.uid,
+          userName: displayName,
+          joinedAt: serverTimestamp(),
+          lastActive: serverTimestamp(),
+        });
+        setCurrentParticipantDocId(docRef.id);
+      } else {
+        // Update existing participant's lastActive timestamp
+        const docId = existingParticipant.docs[0].id;
+        const participantRef = doc(db, "topics", topicKey, "participants", docId);
+        await updateDoc(participantRef, {
+          lastActive: serverTimestamp()
+        });
+        setCurrentParticipantDocId(docId);
+      }
+    } catch (error) {
+      console.error("Error adding participant:", error);
+      // You might want to show an error message to the user here
+    }
+  }, [topicKey]);
+
+  // Remove current user from participants
+  const removeCurrentUser = useCallback(async () => {
+    if (!currentParticipantDocId) return;
+    
+    try {
+      const participantRef = doc(db, "topics", topicKey, "participants", currentParticipantDocId);
+      await deleteDoc(participantRef);
+    } catch (error) {
+      console.error("Error removing participant:", error);
+    }
+  }, [currentParticipantDocId, topicKey]);
+
+  // Track participants in real-time
+  useEffect(() => {
+    const participantsRef = collection(db, "topics", topicKey, "participants");
+    const unsubscribe = onSnapshot(participantsRef, (snapshot) => {
+      const participantData: Participant[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        participantData.push({
+          userId: data.userId,
+          userName: data.userName || `User ${doc.id.substring(0, 4)}`,
+          docId: doc.id,
+          lastActive: data.lastActive
+        });
+      });
+      setParticipants(participantData);
+    });
+
+    return unsubscribe;
+  }, [topicKey]);
+
+  // Track messages
   useEffect(() => {
     const messagesRef = collection(db, "topics", topicKey, "messages");
     const q = query(messagesRef, orderBy("timestamp", "asc"));
@@ -60,29 +169,65 @@ const TopicScreen = () => {
       setMessages(msgs);
     });
 
-    return () => unsubscribe();
+    return unsubscribe;
   }, [topicKey]);
+
+  // Handle screen focus/unfocus to add/remove participants
+  useFocusEffect(
+    useCallback(() => {
+      let isMounted = true;
+      let activityInterval: NodeJS.Timeout;
+      
+      const setup = async () => {
+        try {
+          await addCurrentUser();
+          
+          // Set up interval to update lastActive timestamp every 15 seconds
+          activityInterval = setInterval(() => {
+            if (currentParticipantDocId && isMounted) {
+              updateDoc(doc(db, "topics", topicKey, "participants", currentParticipantDocId), {
+                lastActive: serverTimestamp()
+              });
+            }
+          }, 15000);
+        } catch (error) {
+          console.error("Error in participant setup:", error);
+        }
+      };
+      
+      if (isMounted) setup();
+      
+      return () => {
+        isMounted = false;
+        clearInterval(activityInterval);
+        removeCurrentUser();
+      };
+    }, [addCurrentUser, removeCurrentUser, currentParticipantDocId, topicKey])
+  );
 
   const sendMessage = async () => {
     if (!newMessage.trim()) return;
     const user = auth.currentUser;
     if (!user) return;
 
-    const displayName = user.displayName || user.email?.split("@")[0] || "User";
+    // Get user's display name
+    const userParticipant = participants.find(p => p.userId === user.uid);
+    const displayName = userParticipant?.userName || 
+                       user.displayName || 
+                       user.email?.split("@")[0] || 
+                       `User_${user.uid.substring(0, 5)}`;
 
-    const messageRef = collection(db, "topics", topicKey, "messages");
-    await addDoc(messageRef, {
-      senderId: user.uid,
-      senderName: displayName,
-      message: newMessage,
-      timestamp: serverTimestamp(),
-    });
-
-    setNewMessage("");
-  };
-
-  const clearChat = () => {
-    setIsChatCleared(true);
+    try {
+      await addDoc(collection(db, "topics", topicKey, "messages"), {
+        senderId: user.uid,
+        senderName: displayName,
+        message: newMessage,
+        timestamp: serverTimestamp(),
+      });
+      setNewMessage("");
+    } catch (error) {
+      console.error("Error sending message:", error);
+    }
   };
 
   const formatTime = (timestamp: any) => {
@@ -96,6 +241,8 @@ const TopicScreen = () => {
 
   const renderItem = ({ item }: { item: Message }) => {
     const isCurrentUser = item.senderId === auth.currentUser?.uid;
+    const sender = participants.find(p => p.userId === item.senderId);
+    const isSenderOnline = sender ? calculateOnlineStatus(sender) : false;
 
     return (
       <View
@@ -105,7 +252,10 @@ const TopicScreen = () => {
         ]}
       >
         {!isCurrentUser && (
-          <Text style={styles.senderName}>{item.senderName}</Text>
+          <View style={styles.senderInfo}>
+            <Text style={styles.senderName}>{sender?.userName || item.senderName}</Text>
+            {isSenderOnline && <View style={styles.onlineIndicator} />}
+          </View>
         )}
         <View
           style={[
@@ -129,23 +279,28 @@ const TopicScreen = () => {
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
       >
-        {/* Header with topic and delete icon */}
+        {/* Header with topic and participant count */}
         <View style={styles.header}>
-          <View style={styles.topicContainer}>
-            <Text style={styles.topicLabel}>Topic:</Text>
-            <Text style={styles.topicTitle} numberOfLines={1} ellipsizeMode="tail">
-              {topic}
-            </Text>
+          <View style={styles.headerInfo}>
+            <View style={styles.topicContainer}>
+              <Text style={styles.topicLabel}>Topic:</Text>
+              <Text style={styles.topicTitle} numberOfLines={1} ellipsizeMode="tail">
+                {topic}
+              </Text>
+            </View>
+            <View style={styles.participantContainer}>
+              <Ionicons name="people" size={16} color="#fff" />
+              <Text style={styles.participantCount}>
+                {onlineCount}
+              </Text>
+            </View>
           </View>
-          <TouchableOpacity onPress={clearChat} style={styles.clearButton}>
-            <Ionicons name="trash-outline" size={24} color="#fff" />
-          </TouchableOpacity>
         </View>
   
         {/* Messages */}
         <View style={styles.chatBackground}>
           <FlatList
-            data={isChatCleared ? [] : messages}
+            data={messages}
             keyExtractor={(item) => item.id}
             renderItem={renderItem}
             contentContainerStyle={styles.chatContainer}
@@ -194,7 +349,7 @@ const styles = StyleSheet.create({
     backgroundColor: "#f9f5fa",
   },
   header: {
-    padding: 20,
+    padding: 15,
     backgroundColor: "#afafda",
     flexDirection: "row",
     justifyContent: "space-between",
@@ -207,10 +362,32 @@ const styles = StyleSheet.create({
     shadowRadius: 6,
     elevation: 3,
   },
+  headerInfo: {
+    marginTop: 23,
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+  },
   topicContainer: {
     flexDirection: "row",
     alignItems: "center",
-    flex: 1,
+    maxWidth: "70%",
+  },
+  participantContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "rgba(255,255,255,0.2)",
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 15,
+    marginLeft: 10,
+  },
+  participantCount: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
+    marginLeft: 5,
   },
   chatBackground: {
     flex: 1,
@@ -229,12 +406,23 @@ const styles = StyleSheet.create({
   otherUserContainer: {
     alignItems: "flex-start",
   },
+  senderInfo: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 4,
+    marginLeft: 12,
+  },
   senderName: {
     fontSize: 13,
     color: "#7a7a9d",
-    marginBottom: 4,
-    marginLeft: 12,
     fontWeight: "600",
+    marginRight: 6,
+  },
+  onlineIndicator: {
+    width: 8,
+    height: 8,
+    borderRadius: 4,
+    backgroundColor: "#4CAF50",
   },
   messageBubble: {
     maxWidth: "80%",
@@ -295,26 +483,16 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
   },
-  clearButton: {
-    backgroundColor: "#d0a0b9",
-    padding: 8,
-    borderRadius: 10,
-    marginLeft: 10,
-    marginTop: 20,
-  },
   topicLabel: {
-    marginTop: 20,
-    fontSize: 15,
+    fontSize: 18,
     color: "#f0f0ff",
     marginRight: 8,
     fontWeight: "500",
   },
   topicTitle: {
-    marginTop: 20,
-    fontSize: 20,
+    fontSize: 22,
     fontWeight: "bold",
     color: "#fff",
-    flexShrink: 1,
   },
 });
 

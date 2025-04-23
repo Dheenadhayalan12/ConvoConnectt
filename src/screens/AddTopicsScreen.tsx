@@ -1,5 +1,3 @@
-//AddTopicsScreen.tsx
-
 import React, { useState } from 'react';
 import { 
   View, 
@@ -71,9 +69,7 @@ export default function AddTopicsScreen({ navigation }) {
           >
             <Ionicons name="arrow-back" size={28} color="#fff" />
           </TouchableOpacity>
-          <View style={styles.headerTitleContainer}>
-            <Text style={styles.headerTitle}>Create New Topic</Text>
-          </View>
+          <Text style={styles.headerTitle}>Create New Topic</Text>
           <View style={styles.headerSpacer} />
         </View>
   
@@ -95,51 +91,58 @@ export default function AddTopicsScreen({ navigation }) {
             </View>
           ) : null}
   
+          <View style={styles.sectionHeader}>
+            <Ionicons name="create" size={28} color="#fff" />
+            <Text style={styles.sectionTitle}>New Discussion</Text>
+          </View>
+  
           {/* Input Fields */}
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Topic Title</Text>
-            <TextInput
-              style={styles.input}
-              placeholder="Enter topic title..."
-              placeholderTextColor="#9a9ac0"
-              value={title}
-              onChangeText={(text) => {
-                setTitle(text);
-                setError('');
-              }}
-              autoCapitalize="words"
-            />
+          <View style={styles.formContent}>
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Topic Title</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter topic title..."
+                placeholderTextColor="#9a9ac0"
+                value={title}
+                onChangeText={(text) => {
+                  setTitle(text);
+                  setError('');
+                }}
+                autoCapitalize="words"
+              />
+            </View>
+    
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Discussion Question</Text>
+              <TextInput
+                style={[styles.input, styles.multilineInput]}
+                placeholder="What would you like to discuss?"
+                placeholderTextColor="#9a9ac0"
+                value={question}
+                onChangeText={(text) => {
+                  setQuestion(text);
+                  setError('');
+                }}
+                multiline
+                numberOfLines={4}
+                textAlignVertical="top"
+              />
+            </View>
+    
+            {/* Submit Button */}
+            <TouchableOpacity 
+              style={[
+                styles.submitButton, 
+                (!title.trim() || !question.trim()) && styles.submitButtonDisabled
+              ]}
+              onPress={handleAddTopic}
+              disabled={!title.trim() || !question.trim()}
+            >
+              <Text style={styles.submitButtonText}>Create Topic</Text>
+              <Ionicons name="send" size={20} color="#fff" />
+            </TouchableOpacity>
           </View>
-  
-          <View style={styles.inputContainer}>
-            <Text style={styles.label}>Discussion Question</Text>
-            <TextInput
-              style={[styles.input, styles.multilineInput]}
-              placeholder="What would you like to discuss?"
-              placeholderTextColor="#9a9ac0"
-              value={question}
-              onChangeText={(text) => {
-                setQuestion(text);
-                setError('');
-              }}
-              multiline
-              numberOfLines={4}
-              textAlignVertical="top"
-            />
-          </View>
-  
-          {/* Submit Button */}
-          <TouchableOpacity 
-            style={[
-              styles.submitButton, 
-              (!title.trim() || !question.trim()) && styles.submitButtonDisabled
-            ]}
-            onPress={handleAddTopic}
-            disabled={!title.trim() || !question.trim()}
-          >
-            <Text style={styles.submitButtonText}>Create Topic</Text>
-            <Ionicons name="send" size={20} color="#fff" />
-          </TouchableOpacity>
         </View>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -149,34 +152,33 @@ export default function AddTopicsScreen({ navigation }) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#f5f0fa',
+    backgroundColor: '#f8f9fa',
   },
   container: {
     flex: 1,
   },
   header: {
+    backgroundColor: '#6a5acd',
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    padding: 20,
-    backgroundColor: '#8f8fc2',
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
+    paddingVertical: 25,
+    paddingHorizontal: 20,
+    borderBottomLeftRadius: 25,
+    borderBottomRightRadius: 25,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.1,
+    shadowOpacity: 0.2,
     shadowRadius: 8,
-    elevation: 5,
+    elevation: 10,
   },
   backButton: {
     padding: 5,
-  },
-  headerTitleContainer: {
-    flex: 1,
-    alignItems: 'center',
+    marginRight: 10,
   },
   headerTitle: {
-    fontSize: 20,
+    flex: 1,
+    fontSize: 22,
     fontWeight: 'bold',
     color: '#fff',
     textAlign: 'center',
@@ -186,27 +188,58 @@ const styles = StyleSheet.create({
   },
   formContainer: {
     flex: 1,
-    padding: 25,
-    paddingTop: 20,
+    padding: 20,
+    paddingTop: 25,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: 20,
+    backgroundColor: '#6a5acd',
+    padding: 15,
+    borderRadius: 15,
+    shadowColor: '#6a5acd',
+    shadowOffset: { width: 0, height: 3 },
+    shadowOpacity: 0.2,
+    shadowRadius: 5,
+    elevation: 5,
+  },
+  sectionTitle: {
+    fontSize: 22,
+    fontWeight: 'bold',
+    marginLeft: 12,
+    color: '#fff',
+  },
+  formContent: {
+    backgroundColor: '#fff',
+    padding: 20,
+    borderRadius: 15,
+    shadowColor: '#6a5acd',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 6,
+    elevation: 3,
+    borderLeftWidth: 4,
+    borderLeftColor: '#6a5acd',
   },
   inputContainer: {
-    marginBottom: 25,
+    marginBottom: 20,
   },
   label: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#5a5a78',
+    color: '#4a4a6a',
     marginBottom: 10,
     marginLeft: 5,
   },
   input: {
-    backgroundColor: '#fff',
-    borderRadius: 15,
-    padding: 18,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    padding: 16,
     fontSize: 16,
-    color: '#5a5a78',
+    color: '#4a4a6a',
     borderWidth: 1,
-    borderColor: '#e9dfe9',
+    borderColor: '#e9e9f5',
     shadowColor: '#afafda',
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
@@ -218,18 +251,18 @@ const styles = StyleSheet.create({
     textAlignVertical: 'top',
   },
   submitButton: {
-    backgroundColor: '#8f8fc2',
-    borderRadius: 25,
-    padding: 18,
+    backgroundColor: '#6a5acd',
+    borderRadius: 12,
+    padding: 16,
     flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
-    shadowColor: '#7a7aad',
+    shadowColor: '#6a5acd',
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
     elevation: 5,
-    marginTop: 20,
+    marginTop: 10,
     opacity: 1,
   },
   submitButtonDisabled: {
@@ -242,7 +275,7 @@ const styles = StyleSheet.create({
     marginRight: 10,
   },
   errorContainer: {
-    backgroundColor: '#ff6b6b',
+    backgroundColor: '#e53935',
     padding: 15,
     borderRadius: 10,
     flexDirection: 'row',
@@ -255,7 +288,7 @@ const styles = StyleSheet.create({
     fontSize: 15,
   },
   successContainer: {
-    backgroundColor: '#51cf66',
+    backgroundColor: '#4caf50',
     padding: 15,
     borderRadius: 10,
     flexDirection: 'row',

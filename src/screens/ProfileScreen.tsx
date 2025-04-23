@@ -9,6 +9,10 @@ import {
   ActivityIndicator,
   ScrollView,
   Animated,
+  SafeAreaView,
+  KeyboardAvoidingView,
+  Platform,
+  StatusBar,
 } from "react-native";
 import { auth, db } from "../config/firebaseConfig";
 import { doc, updateDoc, onSnapshot } from "firebase/firestore";
@@ -40,13 +44,18 @@ export default function ProfileScreen() {
   const [updatedGender, setUpdatedGender] = useState("Male");
   const [updatedBio, setUpdatedBio] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [message, setMessage] = useState<{ text: string; type: 'success' | 'error' } | null>(null);
+  const [alertVisible, setAlertVisible] = useState(false);
+  const [alertConfig, setAlertConfig] = useState({
+    text: "",
+    type: "success" as "success" | "error"
+  });
   
   const fadeAnim = useRef(new Animated.Value(0)).current;
   const unsubscribeRef = useRef<(() => void) | null>(null);
 
-  const showMessage = (text: string, type: 'success' | 'error') => {
-    setMessage({ text, type });
+  const showAlert = (text: string, type: "success" | "error") => {
+    setAlertConfig({ text, type });
+    setAlertVisible(true);
     Animated.sequence([
       Animated.timing(fadeAnim, {
         toValue: 1,
@@ -59,7 +68,7 @@ export default function ProfileScreen() {
         duration: 300,
         useNativeDriver: true,
       }),
-    ]).start(() => setMessage(null));
+    ]).start(() => setAlertVisible(false));
   };
 
   const renderGenderOption = useCallback(
@@ -84,20 +93,15 @@ export default function ProfileScreen() {
 
   const handleLogout = async () => {
     try {
-      if (unsubscribeRef.current) {
-        unsubscribeRef.current();
-        unsubscribeRef.current = null;
-      }
       await signOut(auth);
-      navigation.dispatch(
-        CommonActions.reset({
-          index: 0,
-          routes: [{ name: "Login" }],
-        })
-      );
+      // Use navigation.reset instead of CommonActions.reset
+      navigation.reset({
+        index: 0,
+        routes: [{ name: 'Auth' }],
+      });
     } catch (error) {
-      console.error("Logout Error:", error);
-      showMessage("Logout failed. Please try again.", 'error');
+      console.error("Error signing out: ", error);
+      showAlert("Failed to logout. Please try again.", "error");
     }
   };
 
@@ -105,7 +109,7 @@ export default function ProfileScreen() {
     const currentUser = auth.currentUser;
     if (!currentUser) {
       setLoading(false);
-      showMessage("User not authenticated", 'error');
+      showAlert("User not authenticated", "error");
       navigation.goBack();
       return;
     }
@@ -128,7 +132,7 @@ export default function ProfileScreen() {
       },
       (error) => {
         console.error("Error fetching live profile:", error);
-        showMessage("Failed to load profile data", 'error');
+        showAlert("Failed to load profile data", "error");
         setLoading(false);
       }
     );
@@ -147,12 +151,12 @@ export default function ProfileScreen() {
     
     const currentUser = auth.currentUser;
     if (!currentUser || !userData) {
-      showMessage("User not authenticated", 'error');
+      showAlert("User not authenticated", "error");
       return;
     }
 
     if (!updatedName.trim() || !updatedAge.trim() || !updatedGender.trim()) {
-      showMessage("Please fill all required fields", 'error');
+      showAlert("Please fill all required fields", "error");
       return;
     }
 
@@ -166,10 +170,10 @@ export default function ProfileScreen() {
         bio: updatedBio,
       });
       setEditing(false);
-      showMessage("Profile updated successfully!", 'success');
+      showAlert("Profile updated successfully!", "success");
     } catch (error) {
       console.error("Error updating profile:", error);
-      showMessage("Failed to update profile. Please try again.", 'error');
+      showAlert("Failed to update profile. Please try again.", "error");
     } finally {
       setIsSubmitting(false);
     }
@@ -178,7 +182,7 @@ export default function ProfileScreen() {
   if (loading) {
     return (
       <View style={styles.loaderContainer}>
-        <ActivityIndicator size="large" color="#afafda" />
+        <ActivityIndicator size="large" color="#6a5acd" />
         <Text style={styles.loadingText}>Loading your profile...</Text>
       </View>
     );
@@ -187,10 +191,11 @@ export default function ProfileScreen() {
   if (!userData) {
     return (
       <View style={styles.errorContainer}>
+        <Ionicons name="alert-circle" size={60} color="#e53935" />
         <Text style={styles.errorText}>User data not found.</Text>
         <TouchableOpacity
           style={styles.button}
-          onPress={() => navigation.navigate("Login")}
+          onPress={() => navigation.navigate("Auth")}
         >
           <Text style={styles.buttonText}>Go Back</Text>
         </TouchableOpacity>
@@ -199,173 +204,200 @@ export default function ProfileScreen() {
   }
 
   return (
-    <ScrollView contentContainerStyle={styles.container}>
-      {/* Message Notification */}
-      {message && (
-        <Animated.View
-          style={[
-            styles.messageContainer,
-            {
-              backgroundColor: message.type === 'success' ? '#4CAF50' : '#F44336',
-              opacity: fadeAnim,
-              transform: [
-                {
-                  translateY: fadeAnim.interpolate({
-                    inputRange: [0, 1],
-                    outputRange: [-20, 0],
-                  }),
-                },
-              ],
-            },
-          ]}
-        >
-          <Ionicons
-            name={message.type === 'success' ? 'checkmark-circle' : 'warning'}
-            size={20}
-            color="#fff"
-          />
-          <Text style={styles.messageText}>{message.text}</Text>
-        </Animated.View>
-      )}
-
-      <View style={styles.header}>
-        <View style={styles.avatarContainer}>
-          <Text style={styles.avatarText}>
-            {userData.name?.charAt(0).toUpperCase() || "?"}
-          </Text>
-        </View>
-        <Text style={styles.userName}>{userData.name}</Text>
-        <Text style={styles.userEmail}>{userData.email}</Text>
-      </View>
-
-      <View style={styles.content}>
-        {/* Name */}
-        <View style={styles.fieldContainer}>
-          <Text style={styles.label}>Name</Text>
-          {editing ? (
-            <TextInput
-              style={styles.input}
-              value={updatedName}
-              onChangeText={setUpdatedName}
-              placeholder="Your full name"
-              placeholderTextColor="#aaa"
+    <View style={styles.fullScreen}>
+      <StatusBar barStyle="light-content" backgroundColor="#6a5acd" />
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
+        style={styles.keyboardContainer}
+      >
+        {/* Custom Alert */}
+        {alertVisible && (
+          <Animated.View
+            style={[
+              styles.alertContainer,
+              {
+                backgroundColor: alertConfig.type === "success" ? "#4CAF50" : "#F44336",
+                opacity: fadeAnim,
+                transform: [
+                  {
+                    translateY: fadeAnim.interpolate({
+                      inputRange: [0, 1],
+                      outputRange: [-20, 0],
+                    }),
+                  },
+                ],
+              },
+            ]}
+          >
+            <Ionicons
+              name={alertConfig.type === "success" ? "checkmark-circle" : "alert-circle"}
+              size={24}
+              color="#fff"
             />
-          ) : (
-            <Text style={styles.fieldValue}>{userData.name}</Text>
-          )}
-        </View>
-
-        {/* Age */}
-        <View style={styles.fieldContainer}>
-          <Text style={styles.label}>Age</Text>
-          {editing ? (
-            <TextInput
-              style={styles.input}
-              value={updatedAge}
-              onChangeText={setUpdatedAge}
-              keyboardType="numeric"
-              placeholder="Your age"
-              placeholderTextColor="#aaa"
-            />
-          ) : (
-            <Text style={styles.fieldValue}>{userData.age}</Text>
-          )}
-        </View>
-
-        {/* Gender */}
-        <View style={styles.fieldContainer}>
-          <Text style={styles.label}>Gender</Text>
-          {editing ? (
-            <View style={styles.radioGroup}>
-              {GENDER_OPTIONS.map(renderGenderOption)}
-            </View>
-          ) : (
-            <Text style={styles.fieldValue}>{userData.gender}</Text>
-          )}
-        </View>
-
-        {/* Bio */}
-        <View style={styles.fieldContainer}>
-          <Text style={styles.label}>Bio</Text>
-          {editing ? (
-            <TextInput
-              style={[styles.input, styles.bioInput]}
-              value={updatedBio}
-              onChangeText={setUpdatedBio}
-              multiline
-              placeholder="Tell us about yourself..."
-              placeholderTextColor="#aaa"
-              numberOfLines={4}
-            />
-          ) : (
-            <Text style={[styles.fieldValue, !userData.bio && styles.emptyBio]}>
-              {userData.bio || "No bio yet"}
-            </Text>
-          )}
-        </View>
-
-        {/* Action Buttons */}
-        {!editing ? (
-          <View style={styles.actionButtons}>
-            <TouchableOpacity
-              style={[styles.button, styles.editButton]}
-              onPress={() => setEditing(true)}
-            >
-              <Ionicons name="create-outline" size={20} color="#fff" />
-              <Text style={styles.buttonText}>Edit Profile</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.button, styles.logoutButton]}
-              onPress={handleLogout}
-            >
-              <Ionicons name="log-out-outline" size={20} color="#fff" />
-              <Text style={styles.buttonText}>Logout</Text>
-            </TouchableOpacity>
-          </View>
-        ) : (
-          <View style={styles.editButtons}>
-            <TouchableOpacity
-              style={[styles.button, styles.cancelButton]}
-              onPress={() => setEditing(false)}
-            >
-              <Text style={styles.buttonText}>Cancel</Text>
-            </TouchableOpacity>
-            <TouchableOpacity
-              style={[styles.button, styles.saveButton]}
-              onPress={handleSave}
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? (
-                <ActivityIndicator size="small" color="#fff" />
-              ) : (
-                <>
-                  <Ionicons name="checkmark-circle-outline" size={20} color="#fff" />
-                  <Text style={styles.buttonText}>Save</Text>
-                </>
-              )}
-            </TouchableOpacity>
-          </View>
+            <Text style={styles.alertText}>{alertConfig.text}</Text>
+          </Animated.View>
         )}
-      </View>
-    </ScrollView>
+
+        <ScrollView contentContainerStyle={styles.scrollContainer}>
+          <View style={styles.header}>
+            <View style={styles.avatarContainer}>
+              <Text style={styles.avatarText}>
+                {userData.name?.charAt(0).toUpperCase() || "?"}
+              </Text>
+            </View>
+            <Text style={styles.userName}>{userData.name}</Text>
+            <Text style={styles.userEmail}>{userData.email}</Text>
+          </View>
+
+          <View style={styles.content}>
+            {/* Name */}
+            <View style={styles.fieldContainer}>
+              <View style={styles.fieldHeader}>
+                <Ionicons name="person" size={20} color="#6a5acd" />
+                <Text style={styles.label}>Name</Text>
+              </View>
+              {editing ? (
+                <TextInput
+                  style={styles.input}
+                  value={updatedName}
+                  onChangeText={setUpdatedName}
+                  placeholder="Your full name"
+                  placeholderTextColor="#aaa"
+                />
+              ) : (
+                <Text style={styles.fieldValue}>{userData.name}</Text>
+              )}
+            </View>
+
+            {/* Age */}
+            <View style={styles.fieldContainer}>
+              <View style={styles.fieldHeader}>
+                <Ionicons name="calendar" size={20} color="#6a5acd" />
+                <Text style={styles.label}>Age</Text>
+              </View>
+              {editing ? (
+                <TextInput
+                  style={styles.input}
+                  value={updatedAge}
+                  onChangeText={setUpdatedAge}
+                  keyboardType="numeric"
+                  placeholder="Your age"
+                  placeholderTextColor="#aaa"
+                />
+              ) : (
+                <Text style={styles.fieldValue}>{userData.age}</Text>
+              )}
+            </View>
+
+            {/* Gender */}
+            <View style={styles.fieldContainer}>
+              <View style={styles.fieldHeader}>
+                <Ionicons name="people" size={20} color="#6a5acd" />
+                <Text style={styles.label}>Gender</Text>
+              </View>
+              {editing ? (
+                <View style={styles.radioGroup}>
+                  {GENDER_OPTIONS.map(renderGenderOption)}
+                </View>
+              ) : (
+                <Text style={styles.fieldValue}>{userData.gender}</Text>
+              )}
+            </View>
+
+            {/* Bio */}
+            <View style={styles.fieldContainer}>
+              <View style={styles.fieldHeader}>
+                <Ionicons name="information-circle" size={20} color="#6a5acd" />
+                <Text style={styles.label}>Bio</Text>
+              </View>
+              {editing ? (
+                <TextInput
+                  style={[styles.input, styles.bioInput]}
+                  value={updatedBio}
+                  onChangeText={setUpdatedBio}
+                  multiline
+                  placeholder="Tell us about yourself..."
+                  placeholderTextColor="#aaa"
+                  numberOfLines={4}
+                />
+              ) : (
+                <Text style={[styles.fieldValue, !userData.bio && styles.emptyBio]}>
+                  {userData.bio || "No bio yet"}
+                </Text>
+              )}
+            </View>
+
+            {/* Action Buttons */}
+            {!editing ? (
+              <View style={styles.actionButtons}>
+                <TouchableOpacity
+                  style={[styles.button, styles.editButton]}
+                  onPress={() => setEditing(true)}
+                >
+                  <Ionicons name="create-outline" size={20} color="#fff" />
+                  <Text style={styles.buttonText}>Edit Profile</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.button, styles.logoutButton]}
+                  onPress={handleLogout}
+                >
+                  <Ionicons name="log-out-outline" size={20} color="#fff" />
+                  <Text style={styles.buttonText}>Logout</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View style={styles.editButtons}>
+                <TouchableOpacity
+                  style={[styles.button, styles.cancelButton]}
+                  onPress={() => setEditing(false)}
+                >
+                  <Ionicons name="close-circle" size={20} color="#fff" />
+                  <Text style={styles.buttonText}>Cancel</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.button, styles.saveButton]}
+                  onPress={handleSave}
+                  disabled={isSubmitting}
+                >
+                  {isSubmitting ? (
+                    <ActivityIndicator size="small" color="#fff" />
+                  ) : (
+                    <>
+                      <Ionicons name="checkmark-circle" size={20} color="#fff" />
+                      <Text style={styles.buttonText}>Save</Text>
+                    </>
+                  )}
+                </TouchableOpacity>
+              </View>
+            )}
+          </View>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
+  fullScreen: {
+    flex: 1,
+    backgroundColor: "#f8f9fa",
+  },
+  keyboardContainer: {
+    flex: 1,
+  },
+  scrollContainer: {
     flexGrow: 1,
-    backgroundColor: "#f5f5f9",
     paddingBottom: 20,
   },
   loaderContainer: {
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#f5f5f9",
+    backgroundColor: "#f8f9fa",
   },
   loadingText: {
     marginTop: 16,
-    color: "#afafda",
+    color: "#6a5acd",
     fontSize: 16,
     fontWeight: "500",
   },
@@ -373,54 +405,54 @@ const styles = StyleSheet.create({
     flex: 1,
     justifyContent: "center",
     alignItems: "center",
-    backgroundColor: "#f5f5f9",
+    backgroundColor: "#f8f9fa",
     padding: 24,
   },
   errorText: {
-    color: "#d9534f",
-    fontSize: 16,
+    color: "#e53935",
+    fontSize: 18,
+    marginTop: 16,
     marginBottom: 24,
     textAlign: "center",
-    lineHeight: 24,
+    fontWeight: "500",
   },
   header: {
     alignItems: "center",
-    paddingVertical: 32,
-    paddingHorizontal: 24,
-    backgroundColor: "#afafda",
-    borderBottomLeftRadius: 24,
-    borderBottomRightRadius: 24,
-    marginBottom: 16,
+    paddingVertical: 25,
+    paddingHorizontal: 20,
+    backgroundColor: "#6a5acd",
+    borderBottomLeftRadius: 25,
+    borderBottomRightRadius: 25,
+    marginBottom: 20,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 12,
-    elevation: 5,
+    shadowOpacity: 0.2,
+    shadowRadius: 8,
+    elevation: 10,
   },
   avatarContainer: {
-    width: 85,
-    height: 85,
-    borderRadius: 50,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
     backgroundColor: "#fff",
     justifyContent: "center",
     alignItems: "center",
-    marginBottom: 16,
+    marginBottom: 12,
     borderWidth: 3,
-    borderColor: "#e9dfe9",
+    borderColor: "rgba(255, 255, 255, 0.3)",
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
-    marginTop: 20,
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 5,
   },
   avatarText: {
-    fontSize: 36,
+    fontSize: 32,
     fontWeight: "bold",
-    color: "#afafda",
+    color: "#6a5acd",
   },
   userName: {
-    fontSize: 30,
+    fontSize: 26,
     fontWeight: "700",
     color: "#fff",
     marginBottom: 4,
@@ -435,47 +467,53 @@ const styles = StyleSheet.create({
     paddingHorizontal: 20,
   },
   fieldContainer: {
-    marginBottom: 16,
+    marginBottom: 15,
     backgroundColor: "#fff",
-    borderRadius: 12,
+    borderRadius: 15,
     padding: 16,
-    shadowColor: "#afafda",
+    shadowColor: "#6a5acd",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 6,
-    elevation: 2,
-    borderWidth: 1,
-    borderColor: "rgba(175, 175, 218, 0.1)",
+    elevation: 3,
+    borderLeftWidth: 4,
+    borderLeftColor: "#6a5acd",
+  },
+  fieldHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 10,
   },
   label: {
-    fontSize: 12,
+    fontSize: 14,
     fontWeight: "600",
-    color: "#afafda",
-    marginBottom: 8,
-    textTransform: "uppercase",
-    letterSpacing: 0.8,
+    color: "#4a4a6a",
+    marginLeft: 10,
+    textTransform: "capitalize",
   },
   fieldValue: {
     fontSize: 16,
-    color: "#8f8fda",
+    color: "#6a6a89",
     lineHeight: 22,
     marginLeft: 10,
   },
   emptyBio: {
-    color: "#999",
+    color: "#aaa",
     fontStyle: "italic",
   },
   input: {
-    fontSize: 15,
-    color: "#333",
+    fontSize: 16,
+    color: "#4a4a6a",
     borderBottomWidth: 1,
     borderBottomColor: "#e0e0e0",
     paddingVertical: 8,
-    paddingHorizontal: 0,
+    paddingHorizontal: 10,
     marginTop: 4,
+    borderRadius: 4,
+    backgroundColor: "#f9f9f9",
   },
   bioInput: {
-    height: 72,
+    height: 80,
     textAlignVertical: "top",
     paddingTop: 8,
   },
@@ -490,14 +528,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginRight: 24,
     marginVertical: 4,
+    paddingVertical: 6,
+    paddingHorizontal: 10,
+    borderRadius: 8,
   },
   radioLabel: {
     marginLeft: 6,
-    color: "#555",
+    color: "#4a4a6a",
     fontSize: 15,
   },
   radioOptionSelected: {
-    backgroundColor: "rgba(175, 175, 218, 0.1)",
+    backgroundColor: "rgba(106, 90, 205, 0.1)",
   },
   actionButtons: {
     marginTop: 8,
@@ -523,15 +564,15 @@ const styles = StyleSheet.create({
   },
   buttonText: {
     color: "#fff",
-    fontSize: 15,
+    fontSize: 16,
     fontWeight: "600",
     marginLeft: 8,
   },
   editButton: {
-    backgroundColor: "#afafda",
+    backgroundColor: "#6a5acd",
   },
   saveButton: {
-    backgroundColor: "#7cb342",
+    backgroundColor: "#4CAF50",
     flex: 1,
   },
   cancelButton: {
@@ -539,14 +580,14 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   logoutButton: {
-    backgroundColor: "#e0e0e0",
+    backgroundColor: "#afafda",
   },
   radioCircle: {
     width: 20,
     height: 20,
     borderRadius: 10,
     borderWidth: 2,
-    borderColor: "#afafda",
+    borderColor: "#6a5acd",
     justifyContent: "center",
     alignItems: "center",
   },
@@ -554,30 +595,28 @@ const styles = StyleSheet.create({
     width: 10,
     height: 10,
     borderRadius: 5,
-    backgroundColor: "#afafda",
+    backgroundColor: "#6a5acd",
   },
-  // Message notification styles
-  messageContainer: {
-    position: 'absolute',
-    top: 20,
+  alertContainer: {
+    position: "absolute",
+    top: 10,
     left: 20,
     right: 20,
     padding: 15,
-    borderRadius: 8,
-    flexDirection: 'row',
-    alignItems: 'center',
+    borderRadius: 10,
+    flexDirection: "row",
+    alignItems: "center",
     zIndex: 1000,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.25,
-    shadowRadius: 3.84,
+    shadowRadius: 5,
     elevation: 5,
-    marginTop: 40 ,
   },
-  messageText: {
-    color: '#fff',
+  alertText: {
+    color: "#fff",
     fontSize: 15,
-    fontWeight: '500',
+    fontWeight: "500",
     marginLeft: 10,
     flex: 1,
   },

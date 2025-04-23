@@ -7,7 +7,7 @@ export type RootStackParamList = {
     Login: undefined;
     Profile: undefined;
     Signup: undefined;
-    TopicScreen: { topic: string };
+    TopicScreen: { topic: string };z
     ChatScreen: { chatId: string; userName: string };
   };
   

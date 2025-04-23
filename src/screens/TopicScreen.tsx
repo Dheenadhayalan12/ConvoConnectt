@@ -1,6 +1,4 @@
-///TopicsScreen.tsx
-
-import React, { useEffect, useState, useCallback } from "react";
+import React, { useEffect, useState, useCallback, useRef } from "react";
 import {
   View,
   Text,
@@ -11,6 +9,10 @@ import {
   Platform,
   StyleSheet,
   SafeAreaView,
+  StatusBar,
+  ActivityIndicator,
+  Alert,
+  Dimensions,
 } from "react-native";
 import { useRoute, useFocusEffect } from "@react-navigation/native";
 import {
@@ -25,10 +27,13 @@ import {
   deleteDoc,
   doc,
   updateDoc,
+  getDoc,
 } from "firebase/firestore";
 import { auth, db } from "../config/firebaseConfig";
 import { Ionicons } from "@expo/vector-icons";
 import { format } from "date-fns";
+import * as Animatable from "react-native-animatable";
+import { LinearGradient } from "expo-linear-gradient";
 
 interface Message {
   id: string;
@@ -43,60 +48,62 @@ interface Participant {
   userName: string;
   docId: string;
   lastActive: any;
-  isOnline?: boolean;
 }
 
 const ONLINE_THRESHOLD = 30000; // 30 seconds in milliseconds
+const { width } = Dimensions.get('window');
 
 const TopicScreen = () => {
   const route = useRoute();
   const { topic } = route.params as { topic: string };
+  const flatListRef = useRef<FlatList>(null);
 
   const [messages, setMessages] = useState<Message[]>([]);
   const [newMessage, setNewMessage] = useState("");
   const [participants, setParticipants] = useState<Participant[]>([]);
   const [currentParticipantDocId, setCurrentParticipantDocId] = useState<string | null>(null);
-  const [onlineCount, setOnlineCount] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const topicKey = topic.toLowerCase().trim();
 
-  // Calculate online status based on lastActive timestamp
-  const calculateOnlineStatus = (participant: Participant) => {
-    if (!participant.lastActive) return false;
-    
+  // Calculate online status safely
+  const calculateOnlineStatus = useCallback((participant: Participant) => {
     try {
+      if (!participant?.lastActive) return false;
       const lastActiveTime = participant.lastActive.toDate().getTime();
-      const currentTime = new Date().getTime();
+      const currentTime = Date.now();
       return currentTime - lastActiveTime < ONLINE_THRESHOLD;
-    } catch (error) {
-      console.error("Error calculating online status:", error);
+    } catch (e) {
+      console.warn("Error calculating online status", e);
       return false;
     }
-  };
+  }, []);
 
-  // Update online count whenever participants change
-  useEffect(() => {
-    const onlineParticipants = participants.filter(p => calculateOnlineStatus(p));
-    setOnlineCount(onlineParticipants.length);
-  }, [participants]);
+  // Count online participants
+  const onlineCount = participants.filter(p => calculateOnlineStatus(p)).length;
 
+  // Add or update current user in participants
   const addCurrentUser = useCallback(async () => {
     const user = auth.currentUser;
-    if (!user) return;
-  
-    const displayName = user.displayName || user.email?.split("@")[0] || `User_${user.uid.substring(0, 5)}`;
-    const participantsRef = collection(db, "topics", topicKey, "participants");
-    
+    if (!user) {
+      setError("User not authenticated");
+      return;
+    }
+
     try {
-      // Check if user already exists in participants
-      const participantQuery = query(
-        participantsRef,
-        where("userId", "==", user.uid)
-      );
+      // First try to get the user's display name from Firestore
+      const userDoc = await getDoc(doc(db, "users", user.uid));
+      let displayName = userDoc.exists() ? userDoc.data().name : null;
+      
+      // Fallback to auth displayName or email
+      displayName = displayName || user.displayName || user.email?.split("@")[0] || `User_${user.uid.substring(0, 5)}`;
+      
+      const participantsRef = collection(db, "topics", topicKey, "participants");
+      const participantQuery = query(participantsRef, where("userId", "==", user.uid));
       const existingParticipant = await getDocs(participantQuery);
-  
+
       if (existingParticipant.empty) {
-        // Add new participant
         const docRef = await addDoc(participantsRef, {
           userId: user.uid,
           userName: displayName,
@@ -105,17 +112,16 @@ const TopicScreen = () => {
         });
         setCurrentParticipantDocId(docRef.id);
       } else {
-        // Update existing participant's lastActive timestamp
         const docId = existingParticipant.docs[0].id;
-        const participantRef = doc(db, "topics", topicKey, "participants", docId);
-        await updateDoc(participantRef, {
-          lastActive: serverTimestamp()
+        await updateDoc(doc(db, "topics", topicKey, "participants", docId), {
+          lastActive: serverTimestamp(),
+          userName: displayName,
         });
         setCurrentParticipantDocId(docId);
       }
-    } catch (error) {
-      console.error("Error adding participant:", error);
-      // You might want to show an error message to the user here
+    } catch (err) {
+      console.error("Error managing participant:", err);
+      setError("Failed to join topic");
     }
   }, [topicKey]);
 
@@ -126,93 +132,123 @@ const TopicScreen = () => {
     try {
       const participantRef = doc(db, "topics", topicKey, "participants", currentParticipantDocId);
       await deleteDoc(participantRef);
-    } catch (error) {
-      console.error("Error removing participant:", error);
+    } catch (err) {
+      console.error("Error removing participant:", err);
     }
   }, [currentParticipantDocId, topicKey]);
 
   // Track participants in real-time
   useEffect(() => {
-    const participantsRef = collection(db, "topics", topicKey, "participants");
-    const unsubscribe = onSnapshot(participantsRef, (snapshot) => {
-      const participantData: Participant[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        participantData.push({
-          userId: data.userId,
-          userName: data.userName || `User ${doc.id.substring(0, 4)}`,
-          docId: doc.id,
-          lastActive: data.lastActive
+    try {
+      const participantsRef = collection(db, "topics", topicKey, "participants");
+      const unsubscribe = onSnapshot(participantsRef, (snapshot) => {
+        const participantData: Participant[] = [];
+        snapshot.forEach((doc) => {
+          const data = doc.data();
+          participantData.push({
+            userId: data.userId,
+            userName: data.userName || `User ${doc.id.substring(0, 4)}`,
+            docId: doc.id,
+            lastActive: data.lastActive || serverTimestamp(),
+          });
         });
+        setParticipants(participantData);
       });
-      setParticipants(participantData);
-    });
 
-    return unsubscribe;
+      return unsubscribe;
+    } catch (err) {
+      console.error("Error setting up participants listener:", err);
+      setError("Failed to load participants");
+      return () => {};
+    }
   }, [topicKey]);
 
   // Track messages
   useEffect(() => {
-    const messagesRef = collection(db, "topics", topicKey, "messages");
-    const q = query(messagesRef, orderBy("timestamp", "asc"));
+    try {
+      const messagesRef = collection(db, "topics", topicKey, "messages");
+      const q = query(messagesRef, orderBy("timestamp", "asc"));
 
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const msgs: Message[] = [];
-      snapshot.forEach((doc) => {
-        const data = doc.data();
-        msgs.push({
-          id: doc.id,
-          senderId: data.senderId,
-          senderName: data.senderName || "User",
-          message: data.message,
-          timestamp: data.timestamp,
-        });
-      });
-      setMessages(msgs);
-    });
+      const unsubscribe = onSnapshot(q, 
+        (snapshot) => {
+          const msgs: Message[] = [];
+          snapshot.forEach((doc) => {
+            const data = doc.data();
+            msgs.push({
+              id: doc.id,
+              senderId: data.senderId,
+              senderName: data.senderName || "Anonymous",
+              message: data.message,
+              timestamp: data.timestamp,
+            });
+          });
+          setMessages(msgs);
+          setLoading(false);
+          
+          // Scroll to bottom when new messages arrive
+          setTimeout(() => {
+            if (flatListRef.current && msgs.length > 0) {
+              flatListRef.current.scrollToEnd({ animated: true });
+            }
+          }, 100);
+        },
+        (err) => {
+          console.error("Error listening to messages:", err);
+          setError("Failed to load messages");
+          setLoading(false);
+        }
+      );
 
-    return unsubscribe;
+      return unsubscribe;
+    } catch (err) {
+      console.error("Error setting up messages listener:", err);
+      setError("Failed to load messages");
+      setLoading(false);
+      return () => {};
+    }
   }, [topicKey]);
 
-  // Handle screen focus/unfocus to add/remove participants
+  // Handle screen focus/unfocus
   useFocusEffect(
     useCallback(() => {
       let isMounted = true;
       let activityInterval: NodeJS.Timeout;
-      
+
       const setup = async () => {
         try {
           await addCurrentUser();
           
-          // Set up interval to update lastActive timestamp every 15 seconds
           activityInterval = setInterval(() => {
             if (currentParticipantDocId && isMounted) {
               updateDoc(doc(db, "topics", topicKey, "participants", currentParticipantDocId), {
                 lastActive: serverTimestamp()
-              });
+              }).catch(console.warn);
             }
           }, 15000);
-        } catch (error) {
-          console.error("Error in participant setup:", error);
+        } catch (err) {
+          console.error("Error in participant setup:", err);
         }
       };
-      
+
       if (isMounted) setup();
-      
+
       return () => {
         isMounted = false;
         clearInterval(activityInterval);
-        removeCurrentUser();
+        removeCurrentUser().catch(console.warn);
       };
     }, [addCurrentUser, removeCurrentUser, currentParticipantDocId, topicKey])
   );
 
   const sendMessage = async () => {
     if (!newMessage.trim()) return;
+    
     const user = auth.currentUser;
-    if (!user) return;
+    if (!user) {
+      Alert.alert("Error", "You need to be logged in to send messages");
+      return;
+    }
 
-    // Get user's display name
     const userParticipant = participants.find(p => p.userId === user.uid);
     const displayName = userParticipant?.userName || 
                        user.displayName || 
@@ -223,278 +259,528 @@ const TopicScreen = () => {
       await addDoc(collection(db, "topics", topicKey, "messages"), {
         senderId: user.uid,
         senderName: displayName,
-        message: newMessage,
+        message: newMessage.trim(),
         timestamp: serverTimestamp(),
       });
       setNewMessage("");
-    } catch (error) {
-      console.error("Error sending message:", error);
+    } catch (err) {
+      console.error("Error sending message:", err);
+      Alert.alert("Error", "Failed to send message");
     }
   };
 
   const formatTime = (timestamp: any) => {
-    if (!timestamp) return "";
     try {
+      if (!timestamp) return "";
       return format(timestamp.toDate(), "h:mm a");
-    } catch (error) {
+    } catch (e) {
       return "";
     }
+  };
+
+  const getInitials = (name: string) => {
+    if (!name) return "?";
+    const parts = name.split(" ").filter(p => p.length > 0);
+    if (parts.length === 0) return "?";
+    if (parts.length === 1) return parts[0].charAt(0).toUpperCase();
+    return (parts[0].charAt(0) + parts[parts.length - 1].charAt(0)).toUpperCase();
+  };
+
+  const getAvatarColor = (userId: string): [string, string] => {
+    const colors: [string, string][] = [
+      ["#FF6B6B", "#FF8E8E"],
+      ["#4ECDC4", "#88D8C0"],
+      ["#FFBE0B", "#FFD166"],
+      ["#8338EC", "#9D4EDD"],
+      ["#3A86FF", "#6A8EFF"],
+      ["#FF006E", "#FF5C8A"],
+      ["#FB5607", "#FF7B3D"],
+    ];
+    
+    const hash = userId.split("").reduce((acc, char) => acc + char.charCodeAt(0), 0);
+    return colors[hash % colors.length];
   };
 
   const renderItem = ({ item }: { item: Message }) => {
     const isCurrentUser = item.senderId === auth.currentUser?.uid;
     const sender = participants.find(p => p.userId === item.senderId);
     const isSenderOnline = sender ? calculateOnlineStatus(sender) : false;
+    const senderName = sender?.userName || item.senderName;
+    const initials = getInitials(senderName);
+    const avatarColors = getAvatarColor(item.senderId);
 
     return (
-      <View
-        style={[
-          styles.messageContainer,
-          isCurrentUser ? styles.currentUserContainer : styles.otherUserContainer,
-        ]}
-      >
+      <View style={[
+        styles.messageRow,
+        isCurrentUser ? styles.currentUserRow : styles.otherUserRow
+      ]}>
         {!isCurrentUser && (
-          <View style={styles.senderInfo}>
-            <Text style={styles.senderName}>{sender?.userName || item.senderName}</Text>
+          <View style={styles.avatarContainer}>
+            <LinearGradient
+              colors={avatarColors}
+              style={styles.avatar}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <Text style={styles.avatarText}>{initials}</Text>
+            </LinearGradient>
             {isSenderOnline && <View style={styles.onlineIndicator} />}
           </View>
         )}
-        <View
-          style={[
-            styles.messageBubble,
-            isCurrentUser ? styles.currentUserBubble : styles.otherUserBubble,
-          ]}
-        >
-          <Text style={isCurrentUser ? styles.currentUserText : styles.otherUserText}>
-            {item.message}
+        
+        <View style={[
+          styles.messageBubbleContainer,
+          isCurrentUser && styles.currentUserBubbleContainer
+        ]}>
+          {!isCurrentUser && (
+            <Text style={styles.senderName}>{senderName}</Text>
+          )}
+          <Animatable.View
+            animation="fadeInUp"
+            duration={300}
+            style={[
+              styles.messageBubble,
+              isCurrentUser ? styles.currentUserBubble : styles.otherUserBubble
+            ]}
+          >
+            <Text style={isCurrentUser ? styles.currentUserText : styles.otherUserText}>
+              {item.message}
+            </Text>
+          </Animatable.View>
+          <Text style={[
+            styles.timestamp,
+            isCurrentUser ? styles.currentUserTimestamp : styles.otherUserTimestamp
+          ]}>
+            {formatTime(item.timestamp)}
           </Text>
         </View>
-        <Text style={styles.timestamp}>{formatTime(item.timestamp)}</Text>
+        
+        {isCurrentUser && (
+          <View style={styles.avatarContainer}>
+            <LinearGradient
+              colors={avatarColors}
+              style={styles.avatar}
+              start={{ x: 0, y: 0 }}
+              end={{ x: 1, y: 1 }}
+            >
+              <Text style={styles.avatarText}>{initials}</Text>
+            </LinearGradient>
+            {isSenderOnline && <View style={styles.onlineIndicator} />}
+          </View>
+        )}
       </View>
     );
   };
 
+  if (error) {
+    return (
+      <SafeAreaView style={styles.errorContainer}>
+        <Animatable.View animation="shake" duration={600}>
+          <Ionicons name="warning" size={48} color="#FF6B6B" />
+        </Animatable.View>
+        <Text style={styles.errorText}>{error}</Text>
+        <TouchableOpacity 
+          style={styles.retryButton}
+          onPress={() => setError(null)}
+        >
+          <Text style={styles.retryButtonText}>Try Again</Text>
+        </TouchableOpacity>
+      </SafeAreaView>
+    );
+  }
+
+  if (loading) {
+    return (
+      <SafeAreaView style={styles.loadingContainer}>
+        <ActivityIndicator size="large" color="#6a5acd" />
+        <Text style={styles.loadingText}>Loading conversation...</Text>
+      </SafeAreaView>
+    );
+  }
+
   return (
-    <SafeAreaView style={styles.safeArea}>
-      <KeyboardAvoidingView
-        style={styles.container}
-        behavior={Platform.OS === "ios" ? "padding" : "height"}
-        keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+    <View style={styles.fullScreen}>
+      <StatusBar barStyle="light-content" backgroundColor="#6a5acd" />
+      <LinearGradient 
+        colors={["#6a5acd", "#8a8aad"]} 
+        style={styles.headerGradient}
+        start={{ x: 0, y: 0 }}
+        end={{ x: 1, y: 0 }}
       >
-        {/* Header with topic and participant count */}
         <View style={styles.header}>
-          <View style={styles.headerInfo}>
-            <View style={styles.topicContainer}>
-              <Text style={styles.topicLabel}>Topic:</Text>
-              <Text style={styles.topicTitle} numberOfLines={1} ellipsizeMode="tail">
-                {topic}
-              </Text>
-            </View>
-            <View style={styles.participantContainer}>
-              <Ionicons name="people" size={16} color="#fff" />
-              <Text style={styles.participantCount}>
-                {onlineCount}
-              </Text>
-            </View>
+          <Animatable.View 
+            animation="pulse" 
+            iterationCount="infinite" 
+            duration={2000}
+            style={styles.topicIconContainer}
+          >
+            <Ionicons name="chatbubbles" size={22} color="#fff" />
+          </Animatable.View>
+          
+          <View style={styles.topicInfo}>
+            <Text style={styles.topicTitle} numberOfLines={1}>
+              {topic}
+            </Text>
+            <Text style={styles.topicStatus}>
+              {onlineCount} {onlineCount === 1 ? 'person' : 'people'} online
+            </Text>
+          </View>
+          
+          <View style={styles.participantContainer}>
+            <Ionicons name="people" size={18} color="#fff" />
+            <Text style={styles.participantCount}>{participants.length}</Text>
           </View>
         </View>
-  
-        {/* Messages */}
-        <View style={styles.chatBackground}>
+      </LinearGradient>
+      
+      <SafeAreaView style={styles.safeArea}>
+        <KeyboardAvoidingView
+          style={styles.container}
+          behavior={Platform.OS === "ios" ? "padding" : undefined}
+          keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
+        >
           <FlatList
+            ref={flatListRef}
             data={messages}
             keyExtractor={(item) => item.id}
             renderItem={renderItem}
             contentContainerStyle={styles.chatContainer}
             inverted={false}
             showsVerticalScrollIndicator={false}
+            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
+            onLayout={() => flatListRef.current?.scrollToEnd({ animated: true })}
+            ListEmptyComponent={
+              <View style={styles.emptyContainer}>
+                <Ionicons name="chatbox-outline" size={48} color="#D3D3D3" />
+                <Text style={styles.emptyText}>No messages yet</Text>
+                <Text style={styles.emptySubtext}>Be the first to say something!</Text>
+              </View>
+            }
           />
-        </View>
-  
-        {/* Message Input */}
-        <View style={styles.inputContainer}>
-          <TextInput
-            style={styles.input}
-            value={newMessage}
-            onChangeText={setNewMessage}
-            placeholder="Type a message..."
-            placeholderTextColor="#afafda"
-            multiline
-          />
-          <TouchableOpacity
-            onPress={sendMessage}
-            style={[
-              styles.sendButton,
-              { backgroundColor: newMessage.trim() ? "#afafda" : "#d0d0e8" }
-            ]}
-            disabled={!newMessage.trim()}
-          >
-            <Ionicons
-              name="send"
-              size={20}
-              color={newMessage.trim() ? "#fff" : "#f0f0f0"}
+    
+          <View style={styles.inputContainer}>
+            <TextInput
+              style={styles.input}
+              value={newMessage}
+              onChangeText={setNewMessage}
+              placeholder="Type a message..."
+              placeholderTextColor="#9DA3B4"
+              multiline
+              maxLength={500}
+              enablesReturnKeyAutomatically
+              returnKeyType="send"
+              onSubmitEditing={sendMessage}
             />
-          </TouchableOpacity>
-        </View>
-      </KeyboardAvoidingView>
-    </SafeAreaView>
+            <TouchableOpacity
+              onPress={sendMessage}
+              style={styles.sendButton}
+              disabled={!newMessage.trim()}
+              activeOpacity={0.7}
+            >
+              <LinearGradient
+                colors={newMessage.trim() ? ["#6a5acd", "#8a8aad"] : ["#D3D3D3", "#C0C0C0"]}
+                style={styles.sendButtonGradient}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 0 }}
+              >
+                <Ionicons name="send" size={20} color="#FFFFFF" />
+              </LinearGradient>
+            </TouchableOpacity>
+          </View>
+        </KeyboardAvoidingView>
+      </SafeAreaView>
+    </View>
   );  
 };
 
 const styles = StyleSheet.create({
+  fullScreen: {
+    flex: 1,
+  },
   safeArea: {
     flex: 1,
-    backgroundColor: "#f9f5fa",
+    backgroundColor: "#F8F9FA",
+    marginTop: -1,
   },
   container: {
     flex: 1,
-    backgroundColor: "#f9f5fa",
+    backgroundColor: "#F8F9FA",
   },
-  header: {
-    padding: 15,
-    backgroundColor: "#afafda",
-    flexDirection: "row",
-    justifyContent: "space-between",
-    alignItems: "center",
-    borderBottomLeftRadius: 20,
-    borderBottomRightRadius: 20,
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#6a5acd',
+    fontFamily: 'Inter-Medium',
+  },
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    backgroundColor: '#FFFFFF',
+    padding: 20,
+  },
+  errorText: {
+    marginTop: 16,
+    fontSize: 18,
+    color: '#333',
+    textAlign: 'center',
+    marginBottom: 24,
+    fontFamily: 'Inter-Regular',
+    maxWidth: '80%',
+    lineHeight: 24,
+  },
+  retryButton: {
+    backgroundColor: '#6a5acd',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 24,
+    shadowColor: '#6a5acd',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.3,
+    shadowRadius: 6,
+    elevation: 5,
+  },
+  retryButtonText: {
+    color: '#FFFFFF',
+    fontSize: 16,
+    fontWeight: '600',
+    fontFamily: 'Inter-SemiBold',
+  },
+  emptyContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingBottom: 100,
+  },
+  emptyText: {
+    marginTop: 16,
+    fontSize: 18,
+    color: '#A0A0A0',
+    fontFamily: 'Inter-Medium',
+  },
+  emptySubtext: {
+    fontSize: 14,
+    color: '#C0C0C0',
+    marginTop: 4,
+    fontFamily: 'Inter-Regular',
+  },
+  headerGradient: {
+    paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 6,
-    elevation: 3,
+    shadowOpacity: 0.2,
+    shadowRadius: 4,
+    elevation: 4,
   },
-  headerInfo: {
-    marginTop: 23,
+  header: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    height: 60,
+  },
+  topicIconContainer: {
+    width: 36,
+    height: 36,
+    backgroundColor: "rgba(255, 255, 255, 0.2)",
+    borderRadius: 18,
+    justifyContent: "center",
+    alignItems: "center",
+    marginRight: 12,
+  },
+  topicInfo: {
     flex: 1,
-    flexDirection: "row",
-    alignItems: "center",
-    justifyContent: "space-between",
   },
-  topicContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-    maxWidth: "70%",
+  topicTitle: {
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#FFFFFF",
+    fontFamily: 'Inter-SemiBold',
+  },
+  topicStatus: {
+    fontSize: 12,
+    color: "rgba(255,255,255,0.8)",
+    marginTop: 2,
+    fontFamily: 'Inter-Regular',
   },
   participantContainer: {
     flexDirection: "row",
     alignItems: "center",
     backgroundColor: "rgba(255,255,255,0.2)",
     paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 15,
-    marginLeft: 10,
-  },
-  participantCount: {
-    color: "#fff",
-    fontSize: 14,
-    fontWeight: "600",
-    marginLeft: 5,
-  },
-  chatBackground: {
-    flex: 1,
-    backgroundColor: "#f9f5fa",
-  },
-  chatContainer: {
-    padding: 15,
-    paddingBottom: 80,
-  },
-  messageContainer: {
-    marginBottom: 16,
-  },
-  currentUserContainer: {
-    alignItems: "flex-end",
-  },
-  otherUserContainer: {
-    alignItems: "flex-start",
-  },
-  senderInfo: {
-    flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 4,
+    paddingVertical: 6,
+    borderRadius: 16,
     marginLeft: 12,
   },
-  senderName: {
-    fontSize: 13,
-    color: "#7a7a9d",
-    fontWeight: "600",
-    marginRight: 6,
+  participantCount: {
+    color: "#FFFFFF",
+    fontSize: 14,
+    fontWeight: "500",
+    marginLeft: 6,
+    fontFamily: 'Inter-Medium',
+  },
+  chatContainer: {
+    padding: 16,
+    paddingBottom: 8,
+  },
+  messageRow: {
+    flexDirection: 'row',
+    alignItems: 'flex-start',
+    marginBottom: 12,
+    width: '100%',
+  },
+  currentUserRow: {
+    justifyContent: 'flex-end',
+  },
+  otherUserRow: {
+    justifyContent: 'flex-start',
+  },
+  avatarContainer: {
+    marginRight: 8,
+    marginLeft: 8,
+    position: 'relative',
+  },
+  avatar: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    justifyContent: 'center',
+    alignItems: 'center',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.2,
+    shadowRadius: 3,
+    elevation: 3,
+  },
+  avatarText: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: 'bold',
+    fontFamily: 'Inter-Bold',
   },
   onlineIndicator: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: "#4CAF50",
+    position: 'absolute',
+    width: 12,
+    height: 12,
+    borderRadius: 6,
+    backgroundColor: '#4CAF50',
+    borderWidth: 2,
+    borderColor: '#FFF',
+    bottom: 0,
+    right: 0,
+  },
+  messageBubbleContainer: {
+    maxWidth: '70%',
+  },
+  currentUserBubbleContainer: {
+    alignItems: 'flex-end',
+  },
+  senderName: {
+    fontSize: 12,
+    fontWeight: '600',
+    color: '#7A8194',
+    marginBottom: 4,
+    fontFamily: 'Inter-SemiBold',
+    paddingLeft: 8,
   },
   messageBubble: {
-    maxWidth: "80%",
-    paddingVertical: 12,
-    paddingHorizontal: 16,
-    borderRadius: 20,
-    marginVertical: 4,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+    borderRadius: 10,
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 4,
   },
   currentUserBubble: {
-    backgroundColor: "#afafda",
-    borderBottomRightRadius: 4,
+    backgroundColor: '#6a5acd',
+    borderTopRightRadius: 2,
+    borderBottomRightRadius: 12,
   },
   otherUserBubble: {
-    backgroundColor: "#e9dfe9",
-    borderBottomLeftRadius: 4,
+    backgroundColor: '#FFFFFF',
+    borderTopLeftRadius: 2,
+    borderBottomLeftRadius: 12,
+    borderWidth: 1,
+    borderColor: '#EAEEF2',
   },
   currentUserText: {
-    color: "#fff",
-    fontSize: 16,
+    color: '#FFFFFF',
+    fontSize: 15,
+    lineHeight: 20,
+    fontFamily: 'Inter-Regular',
   },
   otherUserText: {
-    color: "#5a5a78",
-    fontSize: 16,
+    color: '#333333',
+    fontSize: 15,
+    lineHeight: 20,
+    fontFamily: 'Inter-Regular',
   },
   timestamp: {
-    fontSize: 11,
-    color: "#9a9ac0",
+    fontSize: 10,
     marginTop: 4,
-    marginHorizontal: 10,
+    fontFamily: 'Inter-Regular',
+  },
+  currentUserTimestamp: {
+    color: 'rgba(255,255,255,0.7)',
+    textAlign: 'right',
+    paddingRight: 8,
+  },
+  otherUserTimestamp: {
+    color: '#9DA3B4',
+    textAlign: 'left',
+    paddingLeft: 8,
   },
   inputContainer: {
     flexDirection: "row",
     alignItems: "center",
     padding: 12,
-    paddingBottom: 20,
-    backgroundColor: "#fff",
+    backgroundColor: "#FFFFFF",
     borderTopWidth: 1,
-    borderColor: "#e9dfe9",
+    borderTopColor: "#EAEEF2",
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: -2 },
+    shadowOpacity: 0.05,
+    shadowRadius: 4,
+    elevation: 5,
   },
   input: {
     flex: 1,
-    backgroundColor: "#f5f5ff",
+    backgroundColor: "#F8F9FA",
     borderRadius: 24,
-    paddingHorizontal: 18,
+    paddingHorizontal: 16,
     paddingVertical: 12,
-    maxHeight: 120,
     fontSize: 16,
-    color: "#5a5a78",
+    color: "#333333",
     borderWidth: 1,
-    borderColor: "#e9dfe9",
+    borderColor: "#E1E5EB",
+    maxHeight: 120,
+    fontFamily: 'Inter-Regular',
+    lineHeight: 20,
   },
   sendButton: {
-    marginLeft: 10,
-    padding: 12,
+    marginLeft: 12,
     borderRadius: 24,
-    width: 48,
-    height: 48,
-    justifyContent: "center",
-    alignItems: "center",
+    overflow: 'hidden',
+    shadowColor: '#6a5acd',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 5,
   },
-  topicLabel: {
-    fontSize: 15,
-    color: "#f0f0ff",
-    marginRight: 8,
-    fontWeight: "500",
-  },
-  topicTitle: {
-    fontSize: 18,
-    fontWeight: "bold",
-    color: "#fff",
+  sendButtonGradient: {
+    width: 44,
+    height: 44,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 22,
   },
 });
 

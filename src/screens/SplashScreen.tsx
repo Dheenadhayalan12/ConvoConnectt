@@ -21,7 +21,7 @@ export default function SplashScreen({ navigation }: any) {
   }, []);
 
   return (
-    <LinearGradient colors={["#afafda", "#afafda"]} style={styles.container}>
+    <LinearGradient colors={["#6a5acd", "#afafda"]} style={styles.container}>
       <View style={styles.container}>
         <Animatable.Text animation="zoomIn" duration={2000} style={styles.logoText}>
           CONVOCONNECT

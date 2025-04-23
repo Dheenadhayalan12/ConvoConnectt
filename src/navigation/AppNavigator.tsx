@@ -6,7 +6,6 @@ import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuthState } from 'react-firebase-hooks/auth';
 import { auth } from '../config/firebaseConfig';
-
 // Screens
 import LoginScreen from '../screens/LoginScreen';
 import SignupScreen from '../screens/SignupScreen';
@@ -16,9 +15,7 @@ import SplashScreen from '../screens/SplashScreen';
 import TopicScreen from '../screens/TopicScreen';
 import ChatScreen from '../screens/ChatScreen';
 import AddTopicsScreen from '../screens/AddTopicsScreen';
-
 import { AuthStackParamList } from '../config/navigationTypes';
-
 // Navigation Types
 export type RootStackParamList = {
   Splash: undefined;
@@ -30,23 +27,24 @@ export type RootStackParamList = {
   TopicScreen: { topic: string };
   ChatScreen: { chatId: string; userName: string };
 };
-
 export type MainTabParamList = {
   Home: undefined;
   AddTopics: undefined;
   Profile: undefined;
 };
-
 // Auth Stack
 const AuthStack = createNativeStackNavigator<AuthStackParamList>();
 function AuthStackNavigator() {
   return (
-    <AuthStack.Navigator screenOptions={{ headerShown: false }}>
+    <AuthStack.Navigator 
+      {...({ id: undefined, screenOptions: { headerShown: false } } as any)}
+    >
       <AuthStack.Screen name="Login" component={LoginScreen} />
       <AuthStack.Screen name="Signup" component={SignupScreen} />
     </AuthStack.Navigator>
   );
 }
+
 
 // Main Tab Navigator
 const Tab = createBottomTabNavigator<MainTabParamList>();
@@ -64,16 +62,16 @@ function MainTabNavigator() {
     }
   };
 
-  return (
+    return (
     <Tab.Navigator
-      screenOptions={({ route }) => ({
+      {...({ id: undefined, screenOptions: ({ route }) => ({
         tabBarIcon: ({ focused, color, size }) => (
           <Ionicons name={getIconName(route.name, focused)} size={size} color={color} />
         ),
         tabBarActiveTintColor: '#6a5acd',
         tabBarInactiveTintColor: 'gray',
         headerShown: false,
-      })}
+      }) } as any)}
     >
       <Tab.Screen name="Home" component={HomeScreen} />
       <Tab.Screen name="AddTopics" component={AddTopicsScreen} />
@@ -86,12 +84,12 @@ function MainTabNavigator() {
 const RootStack = createNativeStackNavigator<RootStackParamList>();
 export default function AppNavigator() {
   const [user, loading] = useAuthState(auth);
-
   if (loading) return <SplashScreen />;
-
   return (
     <NavigationContainer>
-      <RootStack.Navigator screenOptions={{ headerShown: false }}>
+      <RootStack.Navigator 
+        {...({ id: undefined, screenOptions: { headerShown: false } } as any)}
+      >
         {!user ? (
           <>
             <RootStack.Screen name="Splash" component={SplashScreen} />

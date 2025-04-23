@@ -7,9 +7,11 @@ import {
   StyleSheet,
   ActivityIndicator,
   SafeAreaView,
-  Alert,
   Modal,
   Pressable,
+  TextInput,
+  KeyboardAvoidingView,   // Import KeyboardAvoidingView
+  Platform,               // Import Platform for keyboard handling
 } from 'react-native';
 import { auth, db } from '../config/firebaseConfig';
 import { 
@@ -44,9 +46,14 @@ interface Topic {
 
 export default function HomeScreen() {
   const navigation = useNavigation<HomeScreenNavigationProp>();
-  const [userName, setUserName] = useState<string>('');
-  const [userId, setUserId] = useState<string>('');
-  const [loading, setLoading] = useState(true);
+  const [userName, setUserName] = useState<string>(
+    auth.currentUser?.displayName || 
+    auth.currentUser?.email?.split('@')[0] || 
+    'User'
+  );
+  const [userId, setUserId] = useState<string>(auth.currentUser?.uid || '');
+  const [userLoading, setUserLoading] = useState(true);
+  const [topicsLoading, setTopicsLoading] = useState(true);
   const [topics, setTopics] = useState<Topic[]>([]);
   const [modalVisible, setModalVisible] = useState(false);
   const [selectedTopicId, setSelectedTopicId] = useState<string | null>(null);
@@ -57,11 +64,13 @@ export default function HomeScreen() {
     buttons: [],
     cancelable: true
   });
+  const [searchQuery, setSearchQuery] = useState<string>(''); // State for search query
 
   useEffect(() => {
     const currentUser = auth.currentUser;
     if (!currentUser?.uid) {
-      setLoading(false);
+      setUserLoading(false);
+      setTopicsLoading(false);
       return;
     }
 
@@ -69,19 +78,23 @@ export default function HomeScreen() {
 
     const unsubscribeUser = onSnapshot(doc(db, 'users', currentUser.uid), 
       (docSnap) => {
-        setUserName(docSnap.exists() ? docSnap.data().name || 'User' : 'User');
-        setLoading(false);
+        if (docSnap.exists()) {
+          const userData = docSnap.data();
+          if (userData.name) {
+            setUserName(userData.name);
+          }
+        }
+        setUserLoading(false);
       }, 
       (error) => {
         console.error('Error fetching user data:', error);
-        setUserName('User');
-        setLoading(false);
+        setUserLoading(false);
       }
     );
 
     const topicsCollection = collection(db, 'topics');
     const topicsQuery = query(topicsCollection, orderBy('createdAt', 'desc'));
-    
+
     const unsubscribeTopics = onSnapshot(topicsQuery, (snapshot) => {
       try {
         const topicsData = snapshot.docs.map(doc => ({
@@ -93,8 +106,10 @@ export default function HomeScreen() {
           hiddenForUsers: doc.data().hiddenForUsers || [],
         }));
         setTopics(topicsData);
+        setTopicsLoading(false);
       } catch (error) {
         console.error("Error fetching topics:", error);
+        setTopicsLoading(false);
       }
     });
 
@@ -119,7 +134,6 @@ export default function HomeScreen() {
     try {
       setModalVisible(false);
       
-      // First, get a reference to the topic to find its title
       const topicRef = doc(db, 'topics', selectedTopicId);
       const topicSnap = await getDoc(topicRef);
       
@@ -127,7 +141,6 @@ export default function HomeScreen() {
         const topicData = topicSnap.data();
         const topicTitle = topicData.title;
         
-        // Delete all messages related to this topic
         const messagesQuery = query(
           collection(db, 'messages'),
           where('topicTitle', '==', topicTitle)
@@ -135,24 +148,18 @@ export default function HomeScreen() {
         
         const messagesSnapshot = await getDocs(messagesQuery);
         
-        // Create a batch to perform multiple delete operations
         const batch = writeBatch(db);
         
-        // Add all message deletions to the batch
         messagesSnapshot.docs.forEach((messageDoc) => {
           batch.delete(messageDoc.ref);
         });
         
-        // Add the topic deletion to the batch
         batch.delete(topicRef);
         
-        // Commit the batch
         await batch.commit();
         
-        // Show success alert
         showCustomAlert('Success', 'Topic and all related messages have been deleted.');
       } else {
-        // Delete just the topic if for some reason we can't find it
         await deleteDoc(topicRef);
       }
     } catch (error) {
@@ -193,7 +200,7 @@ export default function HomeScreen() {
     );
   };
 
-  const showCustomAlert = (title, message, buttons = [], cancelable = true) => {
+  const showCustomAlert = (title: string, message: string, buttons: any[] = [], cancelable = true) => {
     setAlertConfig({
       title,
       message,
@@ -241,19 +248,25 @@ export default function HomeScreen() {
           </View>
         </View>
         <Text style={styles.topicQuestion}>{item.question}</Text>
-        <Text style={styles.topicDate}>
-          {new Date(item.createdAt?.toDate()).toLocaleDateString()}
-        </Text>
+        <View style={styles.topicFooter}>
+          <Text style={styles.topicDate}>
+            {item.createdAt?.toDate()?.toLocaleDateString() || ''}
+          </Text>
+        </View>
       </TouchableOpacity>
     );
   };
 
-  const visibleTopics = topics.filter(topic => !topic.hiddenForUsers?.includes(userId));
+  const visibleTopics = topics.filter(topic => 
+    !topic.hiddenForUsers?.includes(userId) &&
+    (topic.title.toLowerCase().includes(searchQuery.toLowerCase()) || 
+     topic.question.toLowerCase().includes(searchQuery.toLowerCase()))
+  );
 
   return (
-    <SafeAreaView style={styles.container}>
+    <KeyboardAvoidingView style={styles.container} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <View style={styles.header}>
-        {loading ? (
+        {userLoading ? (
           <ActivityIndicator size="small" color="#fff" />
         ) : (
           <View style={styles.headerContent}>
@@ -264,12 +277,26 @@ export default function HomeScreen() {
       </View>
 
       <View style={styles.content}>
+        {/* Search bar to filter topics */}
+        <TextInput
+          style={styles.searchBar}
+          placeholder="Search topics..."
+          placeholderTextColor="#aaa"
+          value={searchQuery}
+          onChangeText={setSearchQuery}
+        />
+
         <View style={styles.sectionHeader}>
           <Ionicons name="chatbubbles" size={28} color="#fff" />
           <Text style={styles.topicsTitle}>Discussion Topics</Text>
         </View>
 
-        {visibleTopics.length === 0 ? (
+        {topicsLoading ? (
+          <View style={styles.loadingState}>
+            <ActivityIndicator size="large" color="#6a5acd" />
+            <Text style={styles.loadingText}>Loading topics...</Text>
+          </View>
+        ) : visibleTopics.length === 0 ? (
           <View style={styles.emptyState}>
             <Ionicons name="chatbox-outline" size={60} color="#afafda" />
             <Text style={styles.emptyText}>No topics to show</Text>
@@ -286,7 +313,7 @@ export default function HomeScreen() {
         )}
       </View>
 
-      {/* Custom Modal for Delete Confirmation */}
+      {/* Modal for delete confirmation */}
       <Modal
         animationType="fade"
         transparent={true}
@@ -317,7 +344,7 @@ export default function HomeScreen() {
         </View>
       </Modal>
 
-      {/* Custom Alert Modal */}
+      {/* Alert Modal */}
       <Modal
         animationType="fade"
         transparent={true}
@@ -365,7 +392,7 @@ export default function HomeScreen() {
           </View>
         </View>
       </Modal>
-    </SafeAreaView>
+    </KeyboardAvoidingView>
   );
 }
 
@@ -404,6 +431,20 @@ const styles = StyleSheet.create({
     flex: 1,
     paddingHorizontal: 20,
     paddingTop: 25,
+  },
+  searchBar: {
+    height: 40,
+    borderColor: '#ccc',
+    borderWidth: 1,
+    borderRadius: 10,
+    paddingHorizontal: 15,
+    marginBottom: 20,
+    backgroundColor: '#fff',
+    shadowColor: '#6a5acd',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 1,
   },
   sectionHeader: {
     flexDirection: 'row',
@@ -445,6 +486,12 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginBottom: 10,
+  },
+  topicFooter: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 8,
   },
   topicActions: {
     flexDirection: 'row',
@@ -490,7 +537,6 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     paddingHorizontal: 40,
   },
-  // Modal styles
   modalOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -549,7 +595,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     fontSize: 16,
   },
-  // Custom Alert styles
   alertOverlay: {
     flex: 1,
     justifyContent: 'center',
@@ -627,5 +672,16 @@ const styles = StyleSheet.create({
   },
   alertButtonTextDestructive: {
     color: 'white',
+  },
+  loadingState: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingBottom: 100,
+  },
+  loadingText: {
+    fontSize: 16,
+    color: '#6a5acd',
+    marginTop: 20,
   },
 });

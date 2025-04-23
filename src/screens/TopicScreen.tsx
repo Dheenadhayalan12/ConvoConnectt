@@ -41,6 +41,12 @@ interface Message {
   senderName: string;
   message: string;
   timestamp: any;
+  replyTo?: {
+    id: string;
+    message: string;
+    senderId: string;
+    senderName: string;
+  } | null;
 }
 
 interface Participant {
@@ -64,26 +70,19 @@ const TopicScreen = () => {
   const [currentParticipantDocId, setCurrentParticipantDocId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [replyToMessage, setReplyToMessage] = useState<Message | null>(null); // New state for replying
 
   const topicKey = topic.toLowerCase().trim();
 
-  // Calculate online status safely
   const calculateOnlineStatus = useCallback((participant: Participant) => {
-    try {
-      if (!participant?.lastActive) return false;
-      const lastActiveTime = participant.lastActive.toDate().getTime();
-      const currentTime = Date.now();
-      return currentTime - lastActiveTime < ONLINE_THRESHOLD;
-    } catch (e) {
-      console.warn("Error calculating online status", e);
-      return false;
-    }
+    if (!participant?.lastActive) return false;
+    const lastActiveTime = participant.lastActive.toDate().getTime();
+    const currentTime = Date.now();
+    return currentTime - lastActiveTime < ONLINE_THRESHOLD;
   }, []);
 
-  // Count online participants
   const onlineCount = participants.filter(p => calculateOnlineStatus(p)).length;
 
-  // Add or update current user in participants
   const addCurrentUser = useCallback(async () => {
     const user = auth.currentUser;
     if (!user) {
@@ -92,13 +91,10 @@ const TopicScreen = () => {
     }
 
     try {
-      // First try to get the user's display name from Firestore
       const userDoc = await getDoc(doc(db, "users", user.uid));
       let displayName = userDoc.exists() ? userDoc.data().name : null;
-      
-      // Fallback to auth displayName or email
       displayName = displayName || user.displayName || user.email?.split("@")[0] || `User_${user.uid.substring(0, 5)}`;
-      
+
       const participantsRef = collection(db, "topics", topicKey, "participants");
       const participantQuery = query(participantsRef, where("userId", "==", user.uid));
       const existingParticipant = await getDocs(participantQuery);
@@ -125,10 +121,9 @@ const TopicScreen = () => {
     }
   }, [topicKey]);
 
-  // Remove current user from participants
   const removeCurrentUser = useCallback(async () => {
     if (!currentParticipantDocId) return;
-    
+
     try {
       const participantRef = doc(db, "topics", topicKey, "participants", currentParticipantDocId);
       await deleteDoc(participantRef);
@@ -137,78 +132,63 @@ const TopicScreen = () => {
     }
   }, [currentParticipantDocId, topicKey]);
 
-  // Track participants in real-time
   useEffect(() => {
-    try {
-      const participantsRef = collection(db, "topics", topicKey, "participants");
-      const unsubscribe = onSnapshot(participantsRef, (snapshot) => {
-        const participantData: Participant[] = [];
+    const participantsRef = collection(db, "topics", topicKey, "participants");
+    const unsubscribe = onSnapshot(participantsRef, (snapshot) => {
+      const participantData: Participant[] = [];
+      snapshot.forEach((doc) => {
+        const data = doc.data();
+        participantData.push({
+          userId: data.userId,
+          userName: data.userName || `User ${doc.id.substring(0, 4)}`,
+          docId: doc.id,
+          lastActive: data.lastActive || serverTimestamp(),
+        });
+      });
+      setParticipants(participantData);
+    });
+
+    return unsubscribe;
+  }, [topicKey]);
+
+  useEffect(() => {
+    const messagesRef = collection(db, "topics", topicKey, "messages");
+    const q = query(messagesRef, orderBy("timestamp", "asc"));
+
+    const unsubscribe = onSnapshot(q, 
+      (snapshot) => {
+        const msgs: Message[] = [];
         snapshot.forEach((doc) => {
           const data = doc.data();
-          participantData.push({
-            userId: data.userId,
-            userName: data.userName || `User ${doc.id.substring(0, 4)}`,
-            docId: doc.id,
-            lastActive: data.lastActive || serverTimestamp(),
+          msgs.push({
+            id: doc.id,
+            senderId: data.senderId,
+            senderName: data.senderName || "Anonymous",
+            message: data.message,
+            timestamp: data.timestamp,
+            replyTo: data.replyTo || null // Include replyTo field
           });
         });
-        setParticipants(participantData);
-      });
+        setMessages(msgs);
+        setLoading(false);
+        
+        // Scroll to bottom when new messages arrive
+        setTimeout(() => {
+          if (flatListRef.current && msgs.length > 0) {
+            flatListRef.current.scrollToEnd({ animated: true });
+          }
+        }, 100);
+      },
+      (err) => {
+        console.error("Error listening to messages:", err);
+        setError("Failed to load messages");
+        setLoading(false);
+      }
+    );
 
-      return unsubscribe;
-    } catch (err) {
-      console.error("Error setting up participants listener:", err);
-      setError("Failed to load participants");
-      return () => {};
-    }
+    return unsubscribe;
   }, [topicKey]);
 
-  // Track messages
-  useEffect(() => {
-    try {
-      const messagesRef = collection(db, "topics", topicKey, "messages");
-      const q = query(messagesRef, orderBy("timestamp", "asc"));
-
-      const unsubscribe = onSnapshot(q, 
-        (snapshot) => {
-          const msgs: Message[] = [];
-          snapshot.forEach((doc) => {
-            const data = doc.data();
-            msgs.push({
-              id: doc.id,
-              senderId: data.senderId,
-              senderName: data.senderName || "Anonymous",
-              message: data.message,
-              timestamp: data.timestamp,
-            });
-          });
-          setMessages(msgs);
-          setLoading(false);
-          
-          // Scroll to bottom when new messages arrive
-          setTimeout(() => {
-            if (flatListRef.current && msgs.length > 0) {
-              flatListRef.current.scrollToEnd({ animated: true });
-            }
-          }, 100);
-        },
-        (err) => {
-          console.error("Error listening to messages:", err);
-          setError("Failed to load messages");
-          setLoading(false);
-        }
-      );
-
-      return unsubscribe;
-    } catch (err) {
-      console.error("Error setting up messages listener:", err);
-      setError("Failed to load messages");
-      setLoading(false);
-      return () => {};
-    }
-  }, [topicKey]);
-
-  // Handle screen focus/unfocus
   useFocusEffect(
     useCallback(() => {
       let isMounted = true;
@@ -242,7 +222,7 @@ const TopicScreen = () => {
 
   const sendMessage = async () => {
     if (!newMessage.trim()) return;
-    
+
     const user = auth.currentUser;
     if (!user) {
       Alert.alert("Error", "You need to be logged in to send messages");
@@ -261,8 +241,15 @@ const TopicScreen = () => {
         senderName: displayName,
         message: newMessage.trim(),
         timestamp: serverTimestamp(),
+        replyTo: replyToMessage ? { 
+          id: replyToMessage.id, 
+          message: replyToMessage.message, 
+          senderId: replyToMessage.senderId, 
+          senderName: replyToMessage.senderName 
+        } : null // Attach reply info
       });
       setNewMessage("");
+      setReplyToMessage(null); // Reset reply state
     } catch (err) {
       console.error("Error sending message:", err);
       Alert.alert("Error", "Failed to send message");
@@ -270,12 +257,8 @@ const TopicScreen = () => {
   };
 
   const formatTime = (timestamp: any) => {
-    try {
-      if (!timestamp) return "";
-      return format(timestamp.toDate(), "h:mm a");
-    } catch (e) {
-      return "";
-    }
+    if (!timestamp) return "";
+    return format(timestamp.toDate(), "h:mm a");
   };
 
   const getInitials = (name: string) => {
@@ -304,16 +287,27 @@ const TopicScreen = () => {
   const renderItem = ({ item }: { item: Message }) => {
     const isCurrentUser = item.senderId === auth.currentUser?.uid;
     const sender = participants.find(p => p.userId === item.senderId);
-    const isSenderOnline = sender ? calculateOnlineStatus(sender) : false;
     const senderName = sender?.userName || item.senderName;
     const initials = getInitials(senderName);
     const avatarColors = getAvatarColor(item.senderId);
+    
+    // Check if there is a reply to this message
+    const replyMessage = item.replyTo ? 
+      `${item.replyTo.senderName}: ${item.replyTo.message}` : 
+      null;
 
     return (
       <View style={[
         styles.messageRow,
         isCurrentUser ? styles.currentUserRow : styles.otherUserRow
       ]}>
+        {/* Display reply message if exists */}
+        {replyMessage && (
+          <Text style={isCurrentUser ? styles.currentUserReply : styles.otherUserReply}>
+            {replyMessage}
+          </Text>
+        )}
+
         {!isCurrentUser && (
           <View style={styles.avatarContainer}>
             <LinearGradient
@@ -324,10 +318,9 @@ const TopicScreen = () => {
             >
               <Text style={styles.avatarText}>{initials}</Text>
             </LinearGradient>
-            {isSenderOnline && <View style={styles.onlineIndicator} />}
           </View>
         )}
-        
+
         <View style={[
           styles.messageBubbleContainer,
           isCurrentUser && styles.currentUserBubbleContainer
@@ -365,7 +358,6 @@ const TopicScreen = () => {
             >
               <Text style={styles.avatarText}>{initials}</Text>
             </LinearGradient>
-            {isSenderOnline && <View style={styles.onlineIndicator} />}
           </View>
         )}
       </View>
@@ -439,6 +431,16 @@ const TopicScreen = () => {
           behavior={Platform.OS === "ios" ? "padding" : undefined}
           keyboardVerticalOffset={Platform.OS === "ios" ? 90 : 0}
         >
+          {replyToMessage && (
+            <View style={styles.replyContainer}>
+              <Text style={styles.replyText}>Replying to {replyToMessage.senderName}:</Text>
+              <Text style={styles.replyMessage}>{replyToMessage.message}</Text>
+              <TouchableOpacity onPress={() => setReplyToMessage(null)} style={styles.cancelReplyButton}>
+                <Text style={styles.cancelReplyButtonText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          )}
+    
           <FlatList
             ref={flatListRef}
             data={messages}
@@ -516,7 +518,6 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 16,
     color: '#6a5acd',
-    fontFamily: 'Inter-Medium',
   },
   errorContainer: {
     flex: 1,
@@ -531,7 +532,6 @@ const styles = StyleSheet.create({
     color: '#333',
     textAlign: 'center',
     marginBottom: 24,
-    fontFamily: 'Inter-Regular',
     maxWidth: '80%',
     lineHeight: 24,
   },
@@ -540,17 +540,11 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingVertical: 12,
     borderRadius: 24,
-    shadowColor: '#6a5acd',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.3,
-    shadowRadius: 6,
-    elevation: 5,
   },
   retryButtonText: {
     color: '#FFFFFF',
     fontSize: 16,
     fontWeight: '600',
-    fontFamily: 'Inter-SemiBold',
   },
   emptyContainer: {
     flex: 1,
@@ -562,13 +556,11 @@ const styles = StyleSheet.create({
     marginTop: 16,
     fontSize: 18,
     color: '#A0A0A0',
-    fontFamily: 'Inter-Medium',
   },
   emptySubtext: {
     fontSize: 14,
     color: '#C0C0C0',
     marginTop: 4,
-    fontFamily: 'Inter-Regular',
   },
   headerGradient: {
     paddingTop: Platform.OS === 'android' ? StatusBar.currentHeight : 0,
@@ -601,13 +593,11 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: "600",
     color: "#FFFFFF",
-    fontFamily: 'Inter-SemiBold',
   },
   topicStatus: {
     fontSize: 12,
     color: "rgba(255,255,255,0.8)",
     marginTop: 2,
-    fontFamily: 'Inter-Regular',
   },
   participantContainer: {
     flexDirection: "row",
@@ -623,7 +613,6 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: "500",
     marginLeft: 6,
-    fontFamily: 'Inter-Medium',
   },
   chatContainer: {
     padding: 16,
@@ -644,7 +633,6 @@ const styles = StyleSheet.create({
   avatarContainer: {
     marginRight: 8,
     marginLeft: 8,
-    position: 'relative',
   },
   avatar: {
     width: 36,
@@ -662,18 +650,6 @@ const styles = StyleSheet.create({
     color: '#FFF',
     fontSize: 14,
     fontWeight: 'bold',
-    fontFamily: 'Inter-Bold',
-  },
-  onlineIndicator: {
-    position: 'absolute',
-    width: 12,
-    height: 12,
-    borderRadius: 6,
-    backgroundColor: '#4CAF50',
-    borderWidth: 2,
-    borderColor: '#FFF',
-    bottom: 0,
-    right: 0,
   },
   messageBubbleContainer: {
     maxWidth: '70%',
@@ -686,8 +662,6 @@ const styles = StyleSheet.create({
     fontWeight: '600',
     color: '#7A8194',
     marginBottom: 4,
-    fontFamily: 'Inter-SemiBold',
-    paddingLeft: 8,
   },
   messageBubble: {
     paddingHorizontal: 10,
@@ -715,18 +689,15 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 15,
     lineHeight: 20,
-    fontFamily: 'Inter-Regular',
   },
   otherUserText: {
     color: '#333333',
     fontSize: 15,
     lineHeight: 20,
-    fontFamily: 'Inter-Regular',
   },
   timestamp: {
     fontSize: 10,
     marginTop: 4,
-    fontFamily: 'Inter-Regular',
   },
   currentUserTimestamp: {
     color: 'rgba(255,255,255,0.7)',
@@ -737,6 +708,40 @@ const styles = StyleSheet.create({
     color: '#9DA3B4',
     textAlign: 'left',
     paddingLeft: 8,
+  },
+  replyContainer: {
+    backgroundColor: '#E6E6FA',
+    padding: 8,
+    borderRadius: 5,
+    marginBottom: 8,
+  },
+  replyText: {
+    fontSize: 12,
+    fontWeight: 'bold',
+    color: '#444',
+  },
+  replyMessage: {
+    fontSize: 14,
+    color: '#333',
+    marginTop: 4,
+  },
+  cancelReplyButton: {
+    marginTop: 4,
+    alignItems: 'flex-end',
+  },
+  cancelReplyButtonText: {
+    color: '#6a5acd',
+    fontSize: 12,
+  },
+  currentUserReply: {
+    color: '#6a5acd',
+    fontSize: 12,
+    fontStyle: 'italic',
+  },
+  otherUserReply: {
+    color: '#333',
+    fontSize: 12,
+    fontStyle: 'italic',
   },
   inputContainer: {
     flexDirection: "row",
@@ -762,7 +767,6 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: "#E1E5EB",
     maxHeight: 120,
-    fontFamily: 'Inter-Regular',
     lineHeight: 20,
   },
   sendButton: {

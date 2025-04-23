@@ -3,18 +3,16 @@
 import React, { useState, useEffect, useRef } from "react";
 import { 
   View, Text, TextInput, TouchableOpacity, 
-  StyleSheet, Alert, ActivityIndicator, KeyboardAvoidingView, Platform 
+  StyleSheet, ActivityIndicator, KeyboardAvoidingView, Platform 
 } from "react-native";
-import { signIn } from "../config/auth";
+import { signIn } from "../config/auth"; // Ensure this is your sign-in function
 import * as Animatable from "react-native-animatable";
 import { LinearGradient } from "expo-linear-gradient";
-import { auth } from '../config/auth';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../config/navigationTypes';
-import { Ionicons } from "@expo/vector-icons";
-
-console.log("Firebase Auth initialized:", auth);
+import Lottie from 'lottie-react-native'; // Import Lottie
+import { Ionicons } from "@expo/vector-icons"; // Correct Ionicons import
 
 type LoginScreenNavigationProp = NativeStackNavigationProp<RootStackParamList, 'Auth'>;
 
@@ -28,7 +26,6 @@ export default function LoginScreen() {
   const [success, setSuccess] = useState("");
   const messageTimeoutRef = useRef<NodeJS.Timeout | null>(null);
 
-  // Clear messages after a timeout
   useEffect(() => {
     return () => {
       if (messageTimeoutRef.current) {
@@ -46,7 +43,6 @@ export default function LoginScreen() {
       setError("");
     }
 
-    // Clear message after 5 seconds
     if (messageTimeoutRef.current) {
       clearTimeout(messageTimeoutRef.current);
     }
@@ -84,99 +80,106 @@ export default function LoginScreen() {
         behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.keyboardAvoidView}
       >
-        {/* App Logo with Rotating Background */}
-        <View style={styles.logoContainer}>
-          <Animatable.View 
-            animation="rotate"
-            iterationCount="infinite"
-            duration={8000}
-            style={styles.logoBackground}
+        {/* App Logo with Lottie Animation */}
+        <Animatable.View animation="fadeInDown" duration={2000} delay={1000}>
+          <Lottie 
+            source={require('../assets/animations/chat-animation.json')} // Path to your Lottie file
+            autoPlay  
+            loop // Looping the animation
+            style={styles.logoAnimation}
           />
-          <View style={styles.logoIconContainer}>
-            <Ionicons name="chatbubbles" size={40} color="#fff" />
-          </View>
-        </View>
+        </Animatable.View>
         
-        {/* App Title */}
-        <Text style={styles.title}>ConvoConnect</Text>
-
-        <Text style={styles.subtitle}>Join the conversation</Text>
+        <Animatable.View animation="fadeInDown" duration={1000} delay={300}>
+          <Text style={styles.title}>ConvoConnect</Text>
+          <Text style={styles.subtitle}>Join the conversation</Text>
+        </Animatable.View>
 
         {/* Alert Messages */}
-        {error ? (
-          <Animatable.View animation="fadeIn" style={styles.alertContainer}>
-            <Ionicons name="alert-circle" size={20} color="#fff" />
-            <Text style={styles.alertText}>{error}</Text>
-          </Animatable.View>
-        ) : null}
-        
-        {success ? (
-          <Animatable.View animation="fadeIn" style={[styles.alertContainer, styles.successAlert]}>
-            <Ionicons name="checkmark-circle" size={20} color="#fff" />
-            <Text style={styles.alertText}>{success}</Text>
-          </Animatable.View>
-        ) : null}
+        <Animatable.View animation="fadeIn" duration={1000} delay={500}>
+          {error ? (
+            <Animatable.View animation="fadeIn" style={styles.alertContainer}>
+              <Ionicons name="alert-circle" size={20} color="#fff" />
+              <Text style={styles.alertText}>{error}</Text>
+            </Animatable.View>
+          ) : null}
+          
+          {success ? (
+            <Animatable.View animation="fadeIn" style={[styles.alertContainer, styles.successAlert]}>
+              <Ionicons name="checkmark-circle" size={20} color="#fff" />
+              <Text style={styles.alertText}>{success}</Text>
+            </Animatable.View>
+          ) : null}
+        </Animatable.View>
 
         {/* Form Container */}
         <View style={styles.formContainer}>
-          <View style={styles.inputContainer}>
-            <Ionicons name="mail-outline" size={20} color="#e9dfd8" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Email"
-              placeholderTextColor="#e9dfd8"
-              value={email}
-              onChangeText={setEmail}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
-          </View>
-
-          <View style={styles.inputContainer}>
-            <Ionicons name="lock-closed-outline" size={20} color="#e9dfd8" style={styles.inputIcon} />
-            <TextInput
-              style={styles.input}
-              placeholder="Password"
-              placeholderTextColor="#e9dfd8"
-              secureTextEntry={!showPassword}
-              value={password}
-              onChangeText={setPassword}
-            />
-            <TouchableOpacity onPress={toggleShowPassword} style={styles.eyeIcon}>
-              <Ionicons 
-                name={showPassword ? "eye-off-outline" : "eye-outline"} 
-                size={20} 
-                color="#e9dfd8" 
+          <Animatable.View animation="fadeIn" duration={1000} delay={600}>
+            <View style={styles.inputContainer}>
+              <Ionicons name="mail-outline" size={20} color="#e9dfd8" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Email"
+                placeholderTextColor="#e9dfd8"
+                value={email}
+                onChangeText={setEmail}
+                autoCapitalize="none"
+                keyboardType="email-address"
               />
-            </TouchableOpacity>
-          </View>
-
-          <TouchableOpacity style={styles.forgotPasswordContainer}>
-            <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity 
-            style={styles.button} 
-            onPress={handleLogin}
-            disabled={loading}
-          >
-            <View style={styles.buttonContent}>
-              {loading ? (
-                <ActivityIndicator color="#6a5acd" size="small" />
-              ) : (
-                <Text style={styles.buttonText}>Login</Text>
-              )}
             </View>
-          </TouchableOpacity>
+          </Animatable.View>
+
+          <Animatable.View animation="fadeIn" duration={1000} delay={700}>
+            <View style={styles.inputContainer}>
+              <Ionicons name="lock-closed-outline" size={20} color="#e9dfd8" style={styles.inputIcon} />
+              <TextInput
+                style={styles.input}
+                placeholder="Password"
+                placeholderTextColor="#e9dfd8"
+                secureTextEntry={!showPassword}
+                value={password}
+                onChangeText={setPassword}
+              />
+              <TouchableOpacity onPress={toggleShowPassword} style={styles.eyeIcon}>
+                <Ionicons 
+                  name={showPassword ? "eye-off-outline" : "eye-outline"} 
+                  size={20} 
+                  color="#e9dfd8" 
+                />
+              </TouchableOpacity>
+            </View>
+          </Animatable.View>
+          
+          <Animatable.View animation="fadeIn" duration={1000} delay={800}>
+            <TouchableOpacity style={styles.forgotPasswordContainer}>
+              <Text style={styles.forgotPasswordText}>Forgot Password?</Text>
+            </TouchableOpacity>
+          </Animatable.View>
+
+          <Animatable.View animation="fadeIn" duration={1000} delay={900}>
+            <TouchableOpacity 
+              style={styles.button} 
+              onPress={handleLogin}
+              disabled={loading}
+            >
+              <View style={styles.buttonContent}>
+                {loading ? (
+                  <ActivityIndicator color="#6a5acd" size="small" />
+                ) : (
+                  <Text style={styles.buttonText}>Login</Text>
+                )}
+              </View>
+            </TouchableOpacity>
+          </Animatable.View>
         </View>
 
         {/* Signup Link */}
-        <View style={styles.signupContainer}>
+        <Animatable.View animation="fadeIn" duration={1000} delay={1000} style={styles.signupContainer}>
           <Text style={styles.signupText}>Don't have an account?</Text>
           <TouchableOpacity onPress={() => navigation.navigate('Signup')}>
             <Text style={styles.linkText}>Sign Up</Text>
           </TouchableOpacity>
-        </View>
+        </Animatable.View>
       </KeyboardAvoidingView>
     </LinearGradient>
   );
@@ -203,17 +206,9 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  logoBackground: {
-    position: "absolute",
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    backgroundColor: "rgba(255, 255, 255, 0.2)",
-  },
-  logoIconContainer: {
-    position: "absolute",
-    justifyContent: "center",
-    alignItems: "center",
+  logoAnimation: {
+    width: 100,
+    height: 100,
   },
   title: { 
     fontSize: 28, 
@@ -226,7 +221,6 @@ const styles = StyleSheet.create({
     color: "#e9dfe9",
     marginBottom: 16,
   },
-  // New alert styles
   alertContainer: {
     flexDirection: "row",
     alignItems: "center",
@@ -280,7 +274,7 @@ const styles = StyleSheet.create({
   },
   button: { 
     backgroundColor: "#fff", 
-    width: "100%",
+    width: 100,
     borderRadius: 10, 
     height: 50,
     overflow: "hidden",

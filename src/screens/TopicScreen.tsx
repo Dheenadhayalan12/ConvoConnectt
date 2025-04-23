@@ -1,3 +1,5 @@
+///TopicsScreen.tsx
+
 import React, { useEffect, useState, useCallback } from "react";
 import {
   View,
@@ -385,7 +387,7 @@ const styles = StyleSheet.create({
   },
   participantCount: {
     color: "#fff",
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: "600",
     marginLeft: 5,
   },
@@ -484,13 +486,13 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   topicLabel: {
-    fontSize: 18,
+    fontSize: 15,
     color: "#f0f0ff",
     marginRight: 8,
     fontWeight: "500",
   },
   topicTitle: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: "bold",
     color: "#fff",
   },

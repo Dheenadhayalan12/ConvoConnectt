@@ -1,4 +1,5 @@
-// src/screens/HomeScreen.tsx
+//HomeScreen.tsx
+
 import React, { useState, useEffect } from 'react';
 import {
   View,
@@ -11,7 +12,14 @@ import {
   Alert,
 } from 'react-native';
 import { auth, db } from '../config/firebaseConfig';
-import { collection, query, onSnapshot, orderBy, doc, deleteDoc } from 'firebase/firestore';
+import { 
+  collection, 
+  query, 
+  onSnapshot, 
+  orderBy, 
+  doc, 
+  deleteDoc
+} from 'firebase/firestore';
 import { useNavigation } from '@react-navigation/native';
 import { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import { RootStackParamList } from '../config/navigationTypes';
@@ -23,9 +31,8 @@ interface Topic {
   id: string;
   title: string;
   question: string;
-  participants?: number;
   createdAt: any;
-  createdBy?: string; // Add createdBy field to track who created the topic
+  createdBy?: string;
 }
 
 export default function HomeScreen() {
@@ -44,18 +51,12 @@ export default function HomeScreen() {
 
     setUserId(currentUser.uid);
 
-    const userDocRef = doc(db, 'users', currentUser.uid);
-
-    const unsubscribe = onSnapshot(
-      userDocRef,
+    // User data listener
+    const unsubscribeUser = onSnapshot(doc(db, 'users', currentUser.uid), 
       (docSnap) => {
-        if (docSnap.exists()) {
-          setUserName(docSnap.data().name || 'User');
-        } else {
-          setUserName('User');
-        }
+        setUserName(docSnap.exists() ? docSnap.data().name || 'User' : 'User');
         setLoading(false);
-      },
+      }, 
       (error) => {
         console.error('Error fetching user data:', error);
         setUserName('User');
@@ -63,22 +64,30 @@ export default function HomeScreen() {
       }
     );
 
-    return () => unsubscribe();
-  }, []);
-
-  useEffect(() => {
+    // Topics listener
     const topicsCollection = collection(db, 'topics');
-    const q = query(topicsCollection, orderBy('createdAt', 'desc'));
-
-    const unsubscribe = onSnapshot(q, (snapshot) => {
-      const topicsData = snapshot.docs.map((doc) => ({
-        id: doc.id,
-        ...doc.data(),
-      })) as Topic[];
-      setTopics(topicsData);
+    const topicsQuery = query(topicsCollection, orderBy('createdAt', 'desc'));
+    
+    const unsubscribeTopics = onSnapshot(topicsQuery, (snapshot) => {
+      try {
+        const topicsData = snapshot.docs.map(doc => ({
+          id: doc.id,
+          title: doc.data().title,
+          question: doc.data().question,
+          createdAt: doc.data().createdAt,
+          createdBy: doc.data().createdBy,
+        }));
+        
+        setTopics(topicsData);
+      } catch (error) {
+        console.error("Error fetching topics:", error);
+      }
     });
 
-    return () => unsubscribe();
+    return () => {
+      unsubscribeUser();
+      unsubscribeTopics();
+    };
   }, []);
 
   const handleTopicPress = (topicTitle: string) => {
@@ -90,20 +99,16 @@ export default function HomeScreen() {
       'Delete Topic',
       'Are you sure you want to delete this topic?',
       [
-        {
-          text: 'Cancel',
-          style: 'cancel',
-        },
+        { text: 'Cancel', style: 'cancel' },
         {
           text: 'Delete',
           style: 'destructive',
           onPress: async () => {
             try {
               await deleteDoc(doc(db, 'topics', topicId));
-              // Optional: Show success message
             } catch (error) {
               console.error('Error deleting topic:', error);
-              Alert.alert('Error', 'Failed to delete topic. Please try again.');
+              Alert.alert('Error', 'Failed to delete topic.');
             }
           },
         },
@@ -119,11 +124,10 @@ export default function HomeScreen() {
       <View style={styles.topicHeader}>
         <Text style={styles.topicTitle}>{item.title}</Text>
         <View style={styles.topicActions}>
-          {/* Only show delete button if current user created the topic */}
           {item.createdBy === userId && (
             <TouchableOpacity
               onPress={(e) => {
-                e.stopPropagation(); // Prevent triggering the parent TouchableOpacity
+                e.stopPropagation();
                 handleDeleteTopic(item.id);
               }}
               style={styles.deleteButton}
@@ -135,12 +139,6 @@ export default function HomeScreen() {
         </View>
       </View>
       <Text style={styles.topicQuestion}>{item.question}</Text>
-      <View style={styles.topicFooter}>
-        <Ionicons name="people" size={14} color="#9a9ac0" />
-        <Text style={styles.topicParticipants}>
-          {item.participants || 0} participants
-        </Text>
-      </View>
     </TouchableOpacity>
   );
 
@@ -267,15 +265,6 @@ const styles = StyleSheet.create({
     color: '#7a7a9d',
     marginBottom: 12,
     lineHeight: 20,
-  },
-  topicFooter: {
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  topicParticipants: {
-    fontSize: 13,
-    color: '#9a9ac0',
-    marginLeft: 5,
   },
   emptyState: {
     flex: 1,

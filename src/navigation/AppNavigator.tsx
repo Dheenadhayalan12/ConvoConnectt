@@ -16,6 +16,7 @@ import TopicScreen from '../screens/TopicScreen';
 import ChatScreen from '../screens/ChatScreen';
 import AddTopicsScreen from '../screens/AddTopicsScreen';
 import { AuthStackParamList } from '../config/navigationTypes';
+import UserProfileScreen from '../screens/UserProfileScreen';
 // Navigation Types
 export type RootStackParamList = {
   Splash: undefined;
@@ -100,6 +101,8 @@ export default function AppNavigator() {
             <RootStack.Screen name="Main" component={MainTabNavigator} />
             <RootStack.Screen name="TopicScreen" component={TopicScreen} />
             <RootStack.Screen name="ChatScreen" component={ChatScreen} />
+            <RootStack.Screen name="UserProfileScreen" component={UserProfileScreen} />
+
           </>
         )}
       </RootStack.Navigator>

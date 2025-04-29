@@ -14,7 +14,7 @@ import {
   Alert,
   Dimensions,
 } from "react-native";
-import { useRoute, useFocusEffect } from "@react-navigation/native";
+import { useRoute, useFocusEffect, useNavigation } from "@react-navigation/native"; 
 import {
   collection,
   query,
@@ -40,7 +40,7 @@ interface Message {
   senderId: string;
   senderName: string;
   message: string;
-  timestamp: any;
+  timestamp: any; // It's a Firestore timestamp
   replyTo?: {
     id: string;
     message: string;
@@ -53,7 +53,7 @@ interface Participant {
   userId: string;
   userName: string;
   docId: string;
-  lastActive: any;
+  lastActive: any; // Adjust this if you know the specific type (e.g. Firestore Timestamp)
 }
 
 const ONLINE_THRESHOLD = 30000; // 30 seconds in milliseconds
@@ -61,6 +61,7 @@ const { width } = Dimensions.get('window');
 
 const TopicScreen = () => {
   const route = useRoute();
+  const navigation = useNavigation();
   const { topic } = route.params as { topic: string };
   const flatListRef = useRef<FlatList>(null);
 
@@ -70,18 +71,17 @@ const TopicScreen = () => {
   const [currentParticipantDocId, setCurrentParticipantDocId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [replyToMessage, setReplyToMessage] = useState<Message | null>(null); // New state for replying
+  const [replyToMessage, setReplyToMessage] = useState<Message | null>(null);
 
   const topicKey = topic.toLowerCase().trim();
 
   const calculateOnlineStatus = useCallback((participant: Participant) => {
-    if (!participant?.lastActive) return false;
-    const lastActiveTime = participant.lastActive.toDate().getTime();
+    const lastActiveTime = participant?.lastActive?.toDate ? participant.lastActive.toDate().getTime() : null;
     const currentTime = Date.now();
-    return currentTime - lastActiveTime < ONLINE_THRESHOLD;
+    return lastActiveTime && (currentTime - lastActiveTime < ONLINE_THRESHOLD);
   }, []);
 
-  const onlineCount = participants.filter(p => calculateOnlineStatus(p)).length;
+  const onlineCount = participants.filter(calculateOnlineStatus).length;
 
   const addCurrentUser = useCallback(async () => {
     const user = auth.currentUser;
@@ -134,21 +134,26 @@ const TopicScreen = () => {
 
   useEffect(() => {
     const participantsRef = collection(db, "topics", topicKey, "participants");
+    
     const unsubscribe = onSnapshot(participantsRef, (snapshot) => {
-      const participantData: Participant[] = [];
+      const participantData: Participant[] = []; // Correctly typed
+  
       snapshot.forEach((doc) => {
         const data = doc.data();
-        participantData.push({
+        const participant: Participant = {
           userId: data.userId,
           userName: data.userName || `User ${doc.id.substring(0, 4)}`,
           docId: doc.id,
-          lastActive: data.lastActive || serverTimestamp(),
-        });
+          lastActive: data.lastActive || null,
+        };
+  
+        participantData.push(participant);
       });
-      setParticipants(participantData);
+  
+      setParticipants(participantData); 
     });
 
-    return unsubscribe;
+    return unsubscribe; // Cleanup function
   }, [topicKey]);
 
   useEffect(() => {
@@ -165,19 +170,17 @@ const TopicScreen = () => {
             senderId: data.senderId,
             senderName: data.senderName || "Anonymous",
             message: data.message,
-            timestamp: data.timestamp,
-            replyTo: data.replyTo || null // Include replyTo field
+            timestamp: data.timestamp, // Can be null or Firestore timestamp
+            replyTo: data.replyTo || null
           });
         });
         setMessages(msgs);
         setLoading(false);
-        
+
         // Scroll to bottom when new messages arrive
-        setTimeout(() => {
-          if (flatListRef.current && msgs.length > 0) {
-            flatListRef.current.scrollToEnd({ animated: true });
-          }
-        }, 100);
+        if (flatListRef.current && msgs.length > 0) {
+          flatListRef.current.scrollToEnd({ animated: true });
+        }
       },
       (err) => {
         console.error("Error listening to messages:", err);
@@ -197,7 +200,7 @@ const TopicScreen = () => {
       const setup = async () => {
         try {
           await addCurrentUser();
-          
+
           activityInterval = setInterval(() => {
             if (currentParticipantDocId && isMounted) {
               updateDoc(doc(db, "topics", topicKey, "participants", currentParticipantDocId), {
@@ -246,10 +249,10 @@ const TopicScreen = () => {
           message: replyToMessage.message, 
           senderId: replyToMessage.senderId, 
           senderName: replyToMessage.senderName 
-        } : null // Attach reply info
+        } : null
       });
       setNewMessage("");
-      setReplyToMessage(null); // Reset reply state
+      setReplyToMessage(null);
     } catch (err) {
       console.error("Error sending message:", err);
       Alert.alert("Error", "Failed to send message");
@@ -258,7 +261,7 @@ const TopicScreen = () => {
 
   const formatTime = (timestamp: any) => {
     if (!timestamp) return "";
-    return format(timestamp.toDate(), "h:mm a");
+    return format(timestamp.toDate ? timestamp.toDate() : timestamp, "h:mm a");
   };
 
   const getInitials = (name: string) => {
@@ -284,6 +287,10 @@ const TopicScreen = () => {
     return colors[hash % colors.length];
   };
 
+  const navigateToProfile = (userId: string) => {
+    navigation.navigate('UserProfileScreen', { userId });
+  };
+
   const renderItem = ({ item }: { item: Message }) => {
     const isCurrentUser = item.senderId === auth.currentUser?.uid;
     const sender = participants.find(p => p.userId === item.senderId);
@@ -291,7 +298,6 @@ const TopicScreen = () => {
     const initials = getInitials(senderName);
     const avatarColors = getAvatarColor(item.senderId);
     
-    // Check if there is a reply to this message
     const replyMessage = item.replyTo ? 
       `${item.replyTo.senderName}: ${item.replyTo.message}` : 
       null;
@@ -301,7 +307,6 @@ const TopicScreen = () => {
         styles.messageRow,
         isCurrentUser ? styles.currentUserRow : styles.otherUserRow
       ]}>
-        {/* Display reply message if exists */}
         {replyMessage && (
           <Text style={isCurrentUser ? styles.currentUserReply : styles.otherUserReply}>
             {replyMessage}
@@ -309,7 +314,10 @@ const TopicScreen = () => {
         )}
 
         {!isCurrentUser && (
-          <View style={styles.avatarContainer}>
+          <TouchableOpacity 
+            style={styles.avatarContainer} 
+            onPress={() => navigateToProfile(item.senderId)}
+          >
             <LinearGradient
               colors={avatarColors}
               style={styles.avatar}
@@ -318,7 +326,7 @@ const TopicScreen = () => {
             >
               <Text style={styles.avatarText}>{initials}</Text>
             </LinearGradient>
-          </View>
+          </TouchableOpacity>
         )}
 
         <View style={[
@@ -350,14 +358,18 @@ const TopicScreen = () => {
         
         {isCurrentUser && (
           <View style={styles.avatarContainer}>
-            <LinearGradient
-              colors={avatarColors}
-              style={styles.avatar}
-              start={{ x: 0, y: 0 }}
-              end={{ x: 1, y: 1 }}
+            <TouchableOpacity 
+              onPress={() => navigateToProfile(item.senderId)}
             >
-              <Text style={styles.avatarText}>{initials}</Text>
-            </LinearGradient>
+              <LinearGradient
+                colors={avatarColors}
+                style={styles.avatar}
+                start={{ x: 0, y: 0 }}
+                end={{ x: 1, y: 1 }}
+              >
+                <Text style={styles.avatarText}>{initials}</Text>
+              </LinearGradient>
+            </TouchableOpacity>
           </View>
         )}
       </View>

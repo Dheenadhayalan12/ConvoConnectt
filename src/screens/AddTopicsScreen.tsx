@@ -92,7 +92,7 @@ export default function AddTopicsScreen({ navigation }) {
           ) : null}
   
           <View style={styles.sectionHeader}>
-            <Ionicons name="create" size={28} color="#fff" />
+            <Ionicons name="create" size={22} color="#fff" />
             <Text style={styles.sectionTitle}>New Discussion</Text>
           </View>
   
@@ -194,9 +194,9 @@ const styles = StyleSheet.create({
   sectionHeader: {
     flexDirection: 'row',
     alignItems: 'center',
-    marginBottom: 20,
+    marginBottom: 10,
     backgroundColor: '#6a5acd',
-    padding: 15,
+    padding: 10,
     borderRadius: 15,
     shadowColor: '#6a5acd',
     shadowOffset: { width: 0, height: 3 },
@@ -205,7 +205,7 @@ const styles = StyleSheet.create({
     elevation: 5,
   },
   sectionTitle: {
-    fontSize: 22,
+    fontSize: 18,
     fontWeight: 'bold',
     marginLeft: 12,
     color: '#fff',
@@ -221,6 +221,7 @@ const styles = StyleSheet.create({
     elevation: 3,
     borderLeftWidth: 4,
     borderLeftColor: '#6a5acd',
+    marginTop: 15,
   },
   inputContainer: {
     marginBottom: 20,

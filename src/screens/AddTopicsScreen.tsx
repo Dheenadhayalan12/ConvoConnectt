@@ -1,68 +1,77 @@
-import React, { useState } from 'react';
-import { 
-  View, 
-  TextInput, 
-  StyleSheet, 
-  TouchableOpacity, 
+import React, { useState } from "react";
+import {
+  View,
+  TextInput,
+  StyleSheet,
+  TouchableOpacity,
   Text,
   SafeAreaView,
   KeyboardAvoidingView,
-  Platform 
-} from 'react-native';
-import { auth, db } from '../config/firebaseConfig';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { Ionicons } from '@expo/vector-icons';
+  Platform,
+} from "react-native";
+import { auth, db } from "../config/firebaseConfig";
+import { collection, addDoc, serverTimestamp } from "firebase/firestore";
+import { Ionicons } from "@expo/vector-icons";
 
 export default function AddTopicsScreen({ navigation }) {
-  const [title, setTitle] = useState('');
-  const [question, setQuestion] = useState('');
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [title, setTitle] = useState("");
+  const [question, setQuestion] = useState("");
+  const [range, setRange] = useState(""); // New state for range
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   const handleAddTopic = async () => {
-    if (!title.trim() || !question.trim()) {
-      setError('Both title and question are required!');
+    if (!title.trim() || !question.trim() || !range.trim()) {
+      setError("Title, question, and range are required!");
       return;
     }
-  
+
+    const rangeValue = parseFloat(range);
+    if (isNaN(rangeValue) || rangeValue <= 0) {
+      setError("Please enter a valid number for the range in kilometers.");
+      return;
+    }
+
     try {
-      await addDoc(collection(db, 'topics'), {
+      await addDoc(collection(db, "topics"), {
         title,
         question,
+        range: rangeValue, // Include range in Firestore document
         createdAt: serverTimestamp(),
         participants: 0,
         createdBy: auth.currentUser?.uid,
       });
-  
-      setTitle('');
-      setQuestion('');
-      setSuccess('Topic added successfully!');
-      setTimeout(() => setSuccess(''), 3000);
+
+      setTitle("");
+      setQuestion("");
+      setRange(""); // Reset range input
+      setSuccess("Topic added successfully!");
+      setTimeout(() => setSuccess(""), 3000);
       if (navigation.canGoBack()) {
         navigation.goBack();
       } else {
-        navigation.navigate('Home'); 
+        navigation.navigate("Home");
       }
     } catch (error) {
-      console.error('Error adding topic: ', error);
-      setError('Failed to add topic. Please try again.');
+      console.error("Error adding topic: ", error);
+      setError("Failed to add topic. Please try again.");
     }
   };
 
   return (
     <SafeAreaView style={styles.safeArea}>
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        behavior={Platform.OS === "ios" ? "padding" : "height"}
         style={styles.container}
       >
         {/* Header */}
         <View style={styles.header}>
-          <TouchableOpacity 
+          <TouchableOpacity
             onPress={() => {
               if (navigation.canGoBack()) {
                 navigation.goBack();
               } else {
-                navigation.navigate('Home');
+                navigation.navigate("Home");
               }
             }}
             style={styles.backButton}
@@ -72,7 +81,7 @@ export default function AddTopicsScreen({ navigation }) {
           <Text style={styles.headerTitle}>Create New Topic</Text>
           <View style={styles.headerSpacer} />
         </View>
-  
+
         {/* Form Container */}
         <View style={styles.formContainer}>
           {/* Error Message */}
@@ -82,7 +91,7 @@ export default function AddTopicsScreen({ navigation }) {
               <Text style={styles.errorText}>{error}</Text>
             </View>
           ) : null}
-  
+
           {/* Success Message */}
           {success ? (
             <View style={styles.successContainer}>
@@ -90,12 +99,12 @@ export default function AddTopicsScreen({ navigation }) {
               <Text style={styles.successText}>{success}</Text>
             </View>
           ) : null}
-  
+
           <View style={styles.sectionHeader}>
             <Ionicons name="create" size={22} color="#fff" />
             <Text style={styles.sectionTitle}>New Discussion</Text>
           </View>
-  
+
           {/* Input Fields */}
           <View style={styles.formContent}>
             <View style={styles.inputContainer}>
@@ -107,12 +116,12 @@ export default function AddTopicsScreen({ navigation }) {
                 value={title}
                 onChangeText={(text) => {
                   setTitle(text);
-                  setError('');
+                  setError("");
                 }}
                 autoCapitalize="words"
               />
             </View>
-    
+
             <View style={styles.inputContainer}>
               <Text style={styles.label}>Discussion Question</Text>
               <TextInput
@@ -122,22 +131,38 @@ export default function AddTopicsScreen({ navigation }) {
                 value={question}
                 onChangeText={(text) => {
                   setQuestion(text);
-                  setError('');
+                  setError("");
                 }}
                 multiline
                 numberOfLines={4}
                 textAlignVertical="top"
               />
             </View>
-    
+
+            <View style={styles.inputContainer}>
+              <Text style={styles.label}>Visible to in range of (km)</Text>
+              <TextInput
+                style={styles.input}
+                placeholder="Enter distance in km..."
+                placeholderTextColor="#9a9ac0"
+                value={range}
+                onChangeText={(text) => {
+                  setRange(text);
+                  setError("");
+                }}
+                keyboardType="numeric" // Ensure users only enter numbers
+              />
+            </View>
+
             {/* Submit Button */}
-            <TouchableOpacity 
+            <TouchableOpacity
               style={[
-                styles.submitButton, 
-                (!title.trim() || !question.trim()) && styles.submitButtonDisabled
+                styles.submitButton,
+                (!title.trim() || !question.trim() || !range.trim()) &&
+                  styles.submitButtonDisabled,
               ]}
               onPress={handleAddTopic}
-              disabled={!title.trim() || !question.trim()}
+              disabled={!title.trim() || !question.trim() || !range.trim()}
             >
               <Text style={styles.submitButtonText}>Create Topic</Text>
               <Ionicons name="send" size={20} color="#fff" />
@@ -152,21 +177,21 @@ export default function AddTopicsScreen({ navigation }) {
 const styles = StyleSheet.create({
   safeArea: {
     flex: 1,
-    backgroundColor: '#f8f9fa',
+    backgroundColor: "#f8f9fa",
   },
   container: {
     flex: 1,
   },
   header: {
-    backgroundColor: '#6a5acd',
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+    backgroundColor: "#6a5acd",
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
     paddingVertical: 25,
     paddingHorizontal: 20,
     borderBottomLeftRadius: 25,
     borderBottomRightRadius: 25,
-    shadowColor: '#000',
+    shadowColor: "#000",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.2,
     shadowRadius: 8,
@@ -179,9 +204,9 @@ const styles = StyleSheet.create({
   headerTitle: {
     flex: 1,
     fontSize: 22,
-    fontWeight: 'bold',
-    color: '#fff',
-    textAlign: 'center',
+    fontWeight: "bold",
+    color: "#fff",
+    textAlign: "center",
   },
   headerSpacer: {
     width: 28,
@@ -192,13 +217,13 @@ const styles = StyleSheet.create({
     paddingTop: 25,
   },
   sectionHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 10,
-    backgroundColor: '#6a5acd',
+    backgroundColor: "#6a5acd",
     padding: 10,
     borderRadius: 15,
-    shadowColor: '#6a5acd',
+    shadowColor: "#6a5acd",
     shadowOffset: { width: 0, height: 3 },
     shadowOpacity: 0.2,
     shadowRadius: 5,
@@ -206,21 +231,21 @@ const styles = StyleSheet.create({
   },
   sectionTitle: {
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     marginLeft: 12,
-    color: '#fff',
+    color: "#fff",
   },
   formContent: {
-    backgroundColor: '#fff',
+    backgroundColor: "#fff",
     padding: 20,
     borderRadius: 15,
-    shadowColor: '#6a5acd',
+    shadowColor: "#6a5acd",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 6,
     elevation: 3,
     borderLeftWidth: 4,
-    borderLeftColor: '#6a5acd',
+    borderLeftColor: "#6a5acd",
     marginTop: 15,
   },
   inputContainer: {
@@ -228,20 +253,20 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: 16,
-    fontWeight: '600',
-    color: '#4a4a6a',
+    fontWeight: "600",
+    color: "#4a4a6a",
     marginBottom: 10,
     marginLeft: 5,
   },
   input: {
-    backgroundColor: '#f8f9fa',
+    backgroundColor: "#f8f9fa",
     borderRadius: 12,
     padding: 16,
     fontSize: 16,
-    color: '#4a4a6a',
+    color: "#4a4a6a",
     borderWidth: 1,
-    borderColor: '#e9e9f5',
-    shadowColor: '#afafda',
+    borderColor: "#e9e9f5",
+    shadowColor: "#afafda",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 6,
@@ -249,16 +274,16 @@ const styles = StyleSheet.create({
   },
   multilineInput: {
     minHeight: 120,
-    textAlignVertical: 'top',
+    textAlignVertical: "top",
   },
   submitButton: {
-    backgroundColor: '#6a5acd',
+    backgroundColor: "#6a5acd",
     borderRadius: 12,
     padding: 16,
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    shadowColor: '#6a5acd',
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    shadowColor: "#6a5acd",
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.3,
     shadowRadius: 8,
@@ -270,34 +295,34 @@ const styles = StyleSheet.create({
     opacity: 0.6,
   },
   submitButtonText: {
-    color: '#fff',
+    color: "#fff",
     fontSize: 18,
-    fontWeight: 'bold',
+    fontWeight: "bold",
     marginRight: 10,
   },
   errorContainer: {
-    backgroundColor: '#e53935',
+    backgroundColor: "#e53935",
     padding: 15,
     borderRadius: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 20,
   },
   errorText: {
-    color: '#fff',
+    color: "#fff",
     marginLeft: 10,
     fontSize: 15,
   },
   successContainer: {
-    backgroundColor: '#4caf50',
+    backgroundColor: "#4caf50",
     padding: 15,
     borderRadius: 10,
-    flexDirection: 'row',
-    alignItems: 'center',
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 20,
   },
   successText: {
-    color: '#fff',
+    color: "#fff",
     marginLeft: 10,
     fontSize: 15,
   },

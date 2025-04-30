@@ -11,6 +11,7 @@ import {
   TextInput,
   KeyboardAvoidingView,
   Platform,
+  Linking,
 } from "react-native";
 import { auth, db } from "../config/firebaseConfig";
 import {
@@ -31,6 +32,7 @@ import { useNavigation } from "@react-navigation/native";
 import { NativeStackNavigationProp } from "@react-navigation/native-stack";
 import { RootStackParamList } from "../config/navigationTypes";
 import { Ionicons } from "@expo/vector-icons";
+import * as Location from "expo-location";
 
 type HomeScreenNavigationProp = NativeStackNavigationProp<RootStackParamList>;
 
@@ -129,7 +131,7 @@ export default function HomeScreen() {
   }, []);
 
   const startNewGame = () => {
-    const number = Math.floor(Math.random() * 100) + 1; // random number between 1 and 10
+    const number = Math.floor(Math.random() * 100) + 1; // random number between 1 and 100
     setRandomNumber(number);
     setGuess("");
     setAttemptCount(0);
@@ -338,9 +340,30 @@ export default function HomeScreen() {
             <Text style={styles.userName}>{userName}</Text>
           </View>
         )}
-        <TouchableOpacity onPress={startNewGame}>
-          <Ionicons name="game-controller-outline" size={30} color="#fff" />
-        </TouchableOpacity>
+        <View style={styles.iconContainer}>
+          <TouchableOpacity onPress={startNewGame}>
+            <Ionicons name="game-controller-outline" size={30} color="#fff" />
+          </TouchableOpacity>
+          <TouchableOpacity
+            onPress={() => {
+              Location.requestForegroundPermissionsAsync().then(
+                async (status) => {
+                  if (status.granted) {
+                    const location = await Location.getCurrentPositionAsync({});
+                    const { latitude, longitude } = location.coords;
+                    const url = `https://www.google.com/maps/@${latitude},${longitude},15z`;
+                    Linking.openURL(url);
+                  } else {
+                    alert("Location permission denied.");
+                  }
+                }
+              );
+            }}
+            style={styles.locationButton}
+          >
+            <Ionicons name="location-outline" size={30} color="#fff" />
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.content}>
@@ -392,7 +415,7 @@ export default function HomeScreen() {
           <View style={styles.modalContainer}>
             <Text style={styles.modalTitle}>Guess the Number</Text>
             <Text style={styles.modalText}>
-              Guess a number between 1 and 100:
+              Guess a number between 1 and 100 :
             </Text>
             <TextInput
               style={styles.guessInput}
@@ -708,7 +731,7 @@ const styles = StyleSheet.create({
   modalButtons: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginBottom: 20,
+    marginTop: 20,
   },
   modalButton: {
     flex: 1,
@@ -717,6 +740,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginHorizontal: 5,
     backgroundColor: "#6a5acd",
+    marginBottom: 20,
   },
   cancelButton: {
     backgroundColor: "#6a6a89",
@@ -814,5 +838,12 @@ const styles = StyleSheet.create({
   actionButton: {
     marginRight: 15,
     padding: 5,
+  },
+  iconContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
+  locationButton: {
+    marginLeft: 15,
   },
 });
